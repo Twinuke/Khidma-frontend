@@ -1,21 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CountryCode, isValidPhoneNumber } from 'libphonenumber-js';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
   Alert,
   Animated,
   Easing,
-  ScrollView,
-  Modal,
   FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
-import { isValidPhoneNumber, CountryCode } from 'libphonenumber-js';
 
 type PhoneNumberEntryScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -103,8 +103,8 @@ export default function PhoneNumberEntry() {
 
     setLoading(true);
     try {
-      // ✅ Skip OTP — go straight to login
-      navigation.replace('Login', { phoneNumber: fullPhoneNumber });
+      // Navigate to phone verification screen
+      navigation.replace('PhoneVerification');
     } finally {
       setLoading(false);
     }
