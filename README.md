@@ -1,50 +1,78 @@
-# Welcome to your Expo app 👋
+# Khidma React Native Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A React Native mobile application built with Expo for the Khidma backend.
 
-## Get started
+## Prerequisites
 
-1. Install dependencies
+- Node.js (v16 or higher)
+- npm or yarn
+- Expo CLI (will be installed automatically)
+- For iOS: Xcode (Mac only)
+- For Android: Android Studio
 
-   ```bash
-   npm install
-   ```
+## Installation
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+1. Install dependencies:
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. Update the API URL in `src/config/api.ts`:
+   - Replace `http://localhost:3000/api` with your backend URL
+   - For Android emulator, use `http://10.0.2.2:PORT/api` instead of `localhost`
+   - For iOS simulator, `localhost` works fine
+   - For physical devices, use your computer's IP address (e.g., `http://192.168.1.100:3000/api`)
 
-## Learn more
+## Running the App
 
-To learn more about developing your project with Expo, look at the following resources:
+### Start the development server:
+```bash
+npm start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Run on specific platform:
+```bash
+# iOS Simulator (Mac only)
+npm run ios
 
-## Join the community
+# Android Emulator
+npm run android
 
-Join our community of developers creating universal apps.
+# Web Browser
+npm run web
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Project Structure
+
+```
+├── App.tsx                 # Main app component with navigation
+├── index.js                # Entry point
+├── src/
+│   ├── config/
+│   │   └── api.ts          # API configuration and axios setup
+│   └── pages/
+│       ├── Login.tsx       # Login page
+│       └── Home.tsx        # Home page (after login)
+```
+
+## Backend Integration
+
+The app is configured to connect to your backend API. Make sure to:
+
+1. Update the `API_BASE_URL` in `src/config/api.ts`
+2. Ensure your backend CORS settings allow requests from your app
+3. The login endpoint is expected at `/auth/login` - update if different
+
+## Next Steps
+
+- Implement token storage (AsyncStorage or Expo SecureStore)
+- Add more screens and navigation
+- Customize the login page styling
+- Add form validation
+- Implement error handling
+
+## Troubleshooting
+
+- **Connection issues**: Make sure your backend is running and accessible
+- **Android localhost**: Use `10.0.2.2` instead of `localhost` for Android emulator
+- **iOS localhost**: Use `localhost` or your computer's IP address
