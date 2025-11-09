@@ -103,8 +103,8 @@ export default function PhoneNumberEntry() {
 
     setLoading(true);
     try {
-      // Navigate to phone verification screen
-      navigation.replace('PhoneVerification');
+      // Navigate directly to registration form with phone number
+      navigation.replace('RegistrationForm', { phoneNumber: fullPhoneNumber });
     } finally {
       setLoading(false);
     }

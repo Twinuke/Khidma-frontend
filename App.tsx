@@ -1,19 +1,17 @@
-import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect, useState } from 'react';
 
-import Login from './src/pages/Login';
-import Home from './src/pages/Home';
-import PhoneNumberEntry from './src/pages/PhoneNumberEntry';
-import PhoneVerification from './src/pages/PhoneVerification';
-import RegistrationForm from './src/pages/RegistrationForm';
 import SplashScreenComponent from './src/components/SplashScreen';
+import Home from './src/pages/Home';
+import Login from './src/pages/Login';
+import PhoneNumberEntry from './src/pages/PhoneNumberEntry';
+import RegistrationForm from './src/pages/RegistrationForm';
 
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
-  PhoneVerification: undefined;
   RegistrationForm: { phoneNumber: string };
   Login: { phoneNumber?: string } | undefined;
   Home: undefined;
@@ -44,7 +42,6 @@ export default function App() {
       <StatusBar style="auto" />
       <Stack.Navigator initialRouteName="PhoneNumberEntry" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="PhoneNumberEntry" component={PhoneNumberEntry} />
-        <Stack.Screen name="PhoneVerification" component={PhoneVerification} />
         <Stack.Screen name="RegistrationForm" component={RegistrationForm} />
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Home" component={Home} />
