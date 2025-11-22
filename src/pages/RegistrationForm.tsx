@@ -28,6 +28,7 @@ type RegistrationFormRouteProp = {
   name: 'RegistrationForm';
   params: {
     phoneNumber: string;
+    email?: string;
   };
 };
 
@@ -35,9 +36,10 @@ export default function RegistrationForm() {
   const navigation = useNavigation<RegistrationFormScreenNavigationProp>();
   const route = useRoute<RegistrationFormRouteProp>();
   const phoneNumber = route.params?.phoneNumber || '';
+  const routeEmail = route.params?.email || '';
 
   const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(routeEmail);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [userType, setUserType] = useState<'Freelancer' | 'Client'>('Freelancer');
