@@ -32,6 +32,20 @@ type RegistrationFormRouteProp = {
   };
 };
 
+// Map UI value -> backend enum value
+// Make sure this matches your C# enum:
+// public enum UserType { Freelancer = 0, Client = 1 }
+const mapUserTypeForApi = (value: 'Freelancer' | 'Client') => {
+  switch (value) {
+    case 'Freelancer':
+      return 0;
+    case 'Client':
+      return 1;
+    default:
+      return 0;
+  }
+};
+
 export default function RegistrationForm() {
   const navigation = useNavigation<RegistrationFormScreenNavigationProp>();
   const route = useRoute<RegistrationFormRouteProp>();
@@ -101,11 +115,11 @@ export default function RegistrationForm() {
         email,
         password,
         phoneNumber,
-        userType,
+        userType: mapUserTypeForApi(userType), // 👈 FIX HERE
         profileBio: profileBio || undefined,
       });
 
-      if (response.data.token) {
+      if (response.data?.token) {
         await setAuthToken(response.data.token);
         Alert.alert('Success', 'Account created successfully!', [
           {
@@ -113,12 +127,22 @@ export default function RegistrationForm() {
             onPress: () => navigation.replace('Home'),
           },
         ]);
+      } else {
+        Alert.alert('Error', 'Registration succeeded but no token returned.');
       }
     } catch (error: any) {
-      Alert.alert(
-        'Registration Failed',
-        error.response?.data?.message || 'Failed to create account. Please try again.'
-      );
+      console.log('REGISTER ERROR ====================');
+      console.log('response data:', error?.response?.data);
+      console.log('status:', error?.response?.status);
+      console.log('full error:', JSON.stringify(error, null, 2));
+
+      // Try to show backend validation message if exists
+      const backendMessage =
+        error?.response?.data?.message ??
+        error?.response?.data?.title ??
+        'Failed to create account. Please try again.';
+
+      Alert.alert('Registration Failed', backendMessage);
     } finally {
       setLoading(false);
     }
@@ -377,4 +401,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
