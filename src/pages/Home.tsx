@@ -1,720 +1,661 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Platform,
   Animated,
   PanResponder,
+  Dimensions,
+  StatusBar,
+  Image,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+// --- CONFIGURATION ---
+const API_BASE_URL = "http://192.168.1.103:5257/api"; 
+const { width } = Dimensions.get('window');
+const BOTTOM_BAR_HEIGHT = Platform.OS === 'ios' ? 85 : 70;
+const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 50 : StatusBar.currentHeight || 40;
 
-// Only the routes that don't take params
-type BottomNavScreen = 'Home' | 'Jobs' | 'Messages' | 'Settings';
+// Compact header settings
+const HEADER_MIN_HEIGHT = STATUS_BAR_HEIGHT + 55; // Smaller
+const HEADER_MAX_HEIGHT = 280; 
 
-type BottomNavItem = {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  screen: BottomNavScreen;
+const FAB_SIZE = 56;
+
+// --- COLORS ---
+const COLORS = {
+  bg: '#F1F5F9', 
+  primary: '#2563EB', 
+  dark: '#0F172A', 
+  white: '#FFFFFF',
+  secondaryText: '#94A3B8',
+  success: '#10B981',
 };
 
-const BOTTOM_BAR_HEIGHT = Platform.OS === 'ios' ? 80 : 70;
-const FAB_SIZE = 52;
-
-// Top sheet travel distance (collapsed at top, then slides a bit down)
-const SHEET_COLLAPSED_Y = 0;
-const SHEET_EXPANDED_Y = 160;
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function Home() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
-  const handleLogout = () => {
-    navigation.replace('Login');
+  // --- USER DATA STATE ---
+  const [userName, setUserName] = useState('User');
+  const [userRole, setUserRole] = useState('Freelancer');
+  const [userImage, setUserImage] = useState<string | null>(null);
+  const [userCity, setUserCity] = useState('');
+
+  // --- ANIMATION STATE ---
+  const headerHeight = useRef(new Animated.Value(HEADER_MIN_HEIGHT)).current;
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // --- FETCH DATA ON FOCUS ---
+  // This ensures that when you come back from Profile, the data updates!
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+    }, [])
+  );
+
+  const fetchUserData = async () => {
+    try {
+      const currentUserId = 1; // TODO: Dynamic ID
+      const token = await AsyncStorage.getItem('authToken');
+      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+      const response = await axios.get(`${API_BASE_URL}/Users/${currentUserId}`, config);
+      const data = response.data;
+
+      setUserName(data.fullName || 'User');
+      // Logic to determine role string could go here
+      setUserRole(data.city ? `${data.city} • Freelancer` : 'Freelancer');
+      
+      if (data.profileImageUrl) {
+        const img = data.profileImageUrl.startsWith('http') || data.profileImageUrl.startsWith('data:') 
+          ? data.profileImageUrl 
+          : `data:image/jpeg;base64,${data.profileImageUrl}`;
+        setUserImage(img);
+      } else {
+        setUserImage(null);
+      }
+
+    } catch (error) {
+      console.log('Failed to fetch home user data', error);
+    }
   };
 
-  const goToCreateJob = () => {
-    navigation.navigate('CreateJob');
-  };
-
-  const bottomNavItems: BottomNavItem[] = [
-    { label: 'Home', icon: 'home-outline', screen: 'Home' },
-    { label: 'Jobs', icon: 'briefcase-outline', screen: 'Jobs' },
-    { label: 'Messages', icon: 'chatbubble-ellipses-outline', screen: 'Messages' },
-    { label: 'Settings', icon: 'settings-outline', screen: 'Settings' },
-  ];
-
-  // Draggable top header sheet
-  const [sheetExpanded, setSheetExpanded] = useState(false);
-  const sheetTranslateY = useRef(new Animated.Value(SHEET_COLLAPSED_Y)).current;
-  const sheetOffset = useRef(SHEET_COLLAPSED_Y);
-
-  const animateSheet = (toValue: number) => {
-    Animated.spring(sheetTranslateY, {
-      toValue,
-      useNativeDriver: false, // we animate height inside
-      friction: 9,
-      tension: 50,
-    }).start();
-    sheetOffset.current = toValue;
-    setSheetExpanded(toValue === SHEET_EXPANDED_Y);
-  };
-
-  const toggleSheet = () => {
-    animateSheet(sheetExpanded ? SHEET_COLLAPSED_Y : SHEET_EXPANDED_Y);
-  };
-
+  // --- PAN RESPONDER (Header Drag) ---
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8,
-      onPanResponderMove: (_, gesture) => {
-        const next = sheetOffset.current + gesture.dy;
-        const clamped = Math.min(
-          Math.max(next, SHEET_COLLAPSED_Y),
-          SHEET_EXPANDED_Y,
-        );
-        sheetTranslateY.setValue(clamped);
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 5,
+      onPanResponderMove: (_, gestureState) => {
+        let newHeight = (isExpanded ? HEADER_MAX_HEIGHT : HEADER_MIN_HEIGHT) + gestureState.dy;
+        if (newHeight < HEADER_MIN_HEIGHT) newHeight = HEADER_MIN_HEIGHT;
+        if (newHeight > HEADER_MAX_HEIGHT + 30) newHeight = HEADER_MAX_HEIGHT + 30; 
+        headerHeight.setValue(newHeight);
       },
-      onPanResponderRelease: (_, gesture) => {
-        const current = sheetOffset.current + gesture.dy;
-        const halfway = (SHEET_EXPANDED_Y - SHEET_COLLAPSED_Y) / 2;
+      onPanResponderRelease: (_, gestureState) => {
+        const movedDistance = gestureState.dy;
+        const threshold = (HEADER_MAX_HEIGHT - HEADER_MIN_HEIGHT) / 3;
+        let targetHeight = HEADER_MIN_HEIGHT; 
+        let expand = false;
 
-        const shouldExpand =
-          (gesture.vy > 0 && current > SHEET_COLLAPSED_Y) ||
-          current - SHEET_COLLAPSED_Y > halfway;
+        if (!isExpanded) {
+          if (movedDistance > threshold || gestureState.vy > 0.5) {
+            targetHeight = HEADER_MAX_HEIGHT;
+            expand = true;
+          }
+        } else {
+          if (movedDistance < -threshold || gestureState.vy < -0.5) {
+            targetHeight = HEADER_MIN_HEIGHT;
+            expand = false;
+          } else {
+            targetHeight = HEADER_MAX_HEIGHT;
+            expand = true;
+          }
+        }
 
-        animateSheet(shouldExpand ? SHEET_EXPANDED_Y : SHEET_COLLAPSED_Y);
+        Animated.spring(headerHeight, {
+          toValue: targetHeight,
+          useNativeDriver: false,
+          friction: 8,
+          tension: 40,
+        }).start();
+
+        setIsExpanded(expand);
       },
-    }),
+    })
   ).current;
 
-  const sheetDetailsOpacity = sheetTranslateY.interpolate({
-    inputRange: [SHEET_COLLAPSED_Y, SHEET_EXPANDED_Y],
+  const detailsOpacity = headerHeight.interpolate({
+    inputRange: [HEADER_MIN_HEIGHT, HEADER_MAX_HEIGHT - 50],
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
 
-  const sheetDetailsHeight = sheetTranslateY.interpolate({
-    inputRange: [SHEET_COLLAPSED_Y, SHEET_EXPANDED_Y],
-    outputRange: [0, 130],
+  const arrowRotation = headerHeight.interpolate({
+    inputRange: [HEADER_MIN_HEIGHT, HEADER_MAX_HEIGHT],
+    outputRange: ['0deg', '180deg'],
     extrapolate: 'clamp',
   });
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Draggable PROFILE HEADER SHEET – small top header that slides down */}
-        <Animated.View
-          style={[
-            styles.sheetContainer,
-            { transform: [{ translateY: sheetTranslateY }] },
-          ]}
-          {...panResponder.panHandlers}
+    <View style={styles.mainContainer}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      {/* --- DRAGGABLE HEADER --- */}
+      <Animated.View 
+        style={[styles.headerContainer, { height: headerHeight }]}
+        {...panResponder.panHandlers}
+      >
+        <LinearGradient
+          colors={['#0F172A', '#1E293B']} 
+          style={styles.headerGradient}
         >
-          <LinearGradient
-            colors={['#0B2447', '#19376D']}
-            style={styles.sheetGradient}
-          >
-            <TouchableOpacity activeOpacity={0.9} onPress={toggleSheet}>
-              {/* handle bar */}
-              <View style={styles.sheetHandle} />
-
-              {/* collapsed header row */}
-              <View style={styles.sheetHeaderRow}>
-                <View style={styles.sheetAvatar}>
-                  <Ionicons name="person-outline" size={24} color="#E0ECFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sheetName}>Your Name</Text>
-                  <Text style={styles.sheetMeta}>Freelancer • Available</Text>
-                </View>
-                <Ionicons
-                  name={sheetExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color="#E5E7EB"
-                />
+          {/* 1. COMPACT ROW (Always Visible) */}
+          <View style={styles.compactRow}>
+            <View style={styles.userInfo}>
+              <View style={styles.avatarContainer}>
+                 {userImage ? (
+                   <Image source={{ uri: userImage }} style={styles.headerAvatarImage} />
+                 ) : (
+                   <Ionicons name="person" size={20} color="#FFF" />
+                 )}
+                 <View style={styles.onlineDot} />
               </View>
-
-              {/* expanded info (visible when dragged down) */}
-              <Animated.View
-                style={[
-                  styles.sheetDetails,
-                  {
-                    opacity: sheetDetailsOpacity,
-                    height: sheetDetailsHeight,
-                  },
-                ]}
-              >
-                <Text style={styles.sheetDescription}>
-                  Short bio about the freelancer, main skills and location.
-                </Text>
-
-                <View style={styles.sheetInfoRow}>
-                  <Ionicons name="call-outline" size={16} color="#C7D2FE" />
-                  <Text style={styles.sheetInfoText}>+961 70 000 000</Text>
-                </View>
-                <View style={styles.sheetInfoRow}>
-                  <Ionicons name="location-outline" size={16} color="#C7D2FE" />
-                  <Text style={styles.sheetInfoText}>Beirut, Lebanon</Text>
-                </View>
-
-                {/* Logout inside expanded sheet */}
-                <TouchableOpacity
-                  style={styles.sheetLogoutButton}
-                  onPress={handleLogout}
-                >
-                  <Ionicons name="log-out-outline" size={16} color="#B91C1C" />
-                  <Text style={styles.sheetLogoutText}>Logout</Text>
-                </TouchableOpacity>
-              </Animated.View>
-            </TouchableOpacity>
-          </LinearGradient>
-        </Animated.View>
-
-        {/* MAIN CONTENT (no scrolling) */}
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          scrollEnabled={false} // page not scrollable
-        >
-          {/* TOP SEARCH / ACTION STRIP (fills gap between header and balance) */}
-          <View style={styles.topSearchRow}>
-            <TouchableOpacity
-              style={styles.topAvatarCircle}
-              onPress={() => navigation.navigate('Profile')}
-            >
-              <Ionicons name="person-outline" size={20} color="#E5E7EB" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.searchPill}
-              onPress={() => navigation.navigate('Search' as any)}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="search-outline" size={18} color="#E5E7EB" />
-              <Text style={styles.searchText}>Search jobs, clients...</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.topIconCircle}
-              onPress={() => navigation.navigate('Bids' as any)}
-            >
-              <Ionicons name="ribbon-outline" size={18} color="#E5E7EB" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.topIconCircle}
-              onPress={() => navigation.navigate('Notifications')}
-            >
-              <Ionicons name="qr-code-outline" size={18} color="#E5E7EB" />
-            </TouchableOpacity>
-          </View>
-
-          {/* BALANCE CARD */}
-          <View style={styles.balanceWrapper}>
-            <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>Freelancer Balance</Text>
-              <Text style={styles.balanceAmount}>$ 1,250.00</Text>
-              <Text style={styles.balanceSub}>
-                Total earnings available to withdraw
-              </Text>
-
-              <View style={styles.balanceActionsRow}>
-                <TouchableOpacity
-                  style={styles.balanceAction}
-                  onPress={() => navigation.navigate('Payouts' as any)}
-                >
-                  <Ionicons name="card-outline" size={16} color="#EFF6FF" />
-                  <Text style={styles.balanceActionText}>Withdraw</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.balanceAction}
-                  onPress={() => navigation.navigate('Earnings' as any)}
-                >
-                  <Ionicons name="bar-chart-outline" size={16} color="#EFF6FF" />
-                  <Text style={styles.balanceActionText}>View details</Text>
-                </TouchableOpacity>
+              <View>
+                <Text style={styles.greetingText}>Hello, {userName.split(' ')[0]}</Text>
+                <Text style={styles.statusText}>{userRole}</Text>
               </View>
+            </View>
+
+            <View style={styles.headerIcons}>
+               <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Notifications')}>
+                  <Ionicons name="notifications-outline" size={20} color="#FFF" />
+                  <View style={styles.notifBadge} />
+               </TouchableOpacity>
             </View>
           </View>
 
-          {/* QUICK ACTION ICONS (core actions) */}
-          <View style={styles.quickActionsRow}>
-            <TouchableOpacity
-              style={styles.quickAction}
-              onPress={() => navigation.navigate('Jobs')}
-            >
-              <View style={styles.quickActionIcon}>
-                <Ionicons name="search-outline" size={20} color="#F9FAFB" />
+          {/* 2. EXPANDED DETAILS (Fades in) */}
+          <Animated.View style={[styles.expandedContent, { opacity: detailsOpacity }]}>
+            <View style={styles.divider} />
+            
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Success Rate</Text>
+                <Text style={styles.statValue}>98%</Text>
               </View>
-              <Text style={styles.quickActionText}>Browse Jobs</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickAction}
-              onPress={() => navigation.navigate('CreateJob')}
-            >
-              <View style={styles.quickActionIcon}>
-                <Ionicons name="add-circle-outline" size={20} color="#F9FAFB" />
+              <View style={styles.verticalLine} />
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Total Earned</Text>
+                <Text style={styles.statValue}>$1.2k</Text>
               </View>
-              <Text style={styles.quickActionText}>Post a Job</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickAction}
-              onPress={() => navigation.navigate('MyJobs')}
-            >
-              <View style={styles.quickActionIcon}>
-                <Ionicons name="briefcase-outline" size={20} color="#F9FAFB" />
+              <View style={styles.verticalLine} />
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Rating</Text>
+                <View style={{flexDirection:'row', alignItems:'center'}}>
+                   <Text style={styles.statValue}>4.9</Text>
+                   <Ionicons name="star" size={12} color="#FBBF24" style={{marginLeft:2}} />
+                </View>
               </View>
-              <Text style={styles.quickActionText}>My Jobs</Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              style={styles.quickAction}
-              onPress={() => navigation.navigate('Messages')}
-            >
-              <View style={styles.quickActionIcon}>
-                <Ionicons name="chatbubble-ellipses-outline" size={20} color="#F9FAFB" />
-              </View>
-              <Text style={styles.quickActionText}>Messages</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* RECENT ACTIVITY (replaces Navigation) */}
-          <View style={styles.recentSection}>
-            <View style={styles.recentHeaderRow}>
-              <Text style={styles.recentTitle}>Recent Activity</Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Activity' as any)}
-              >
-                <Text style={styles.recentViewAll}>View all</Text>
+            <View style={styles.expandedActions}>
+              <TouchableOpacity style={styles.expButton} onPress={() => navigation.navigate('Profile')}>
+                 <Ionicons name="person-circle-outline" size={20} color="#FFF" />
+                 <Text style={styles.expButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.expButton, styles.logoutBtn]} onPress={() => navigation.replace('Login')}>
+                 <Ionicons name="log-out-outline" size={20} color="#FCA5A5" />
+                 <Text style={[styles.expButtonText, {color: '#FCA5A5'}]}>Logout</Text>
               </TouchableOpacity>
             </View>
+          </Animated.View>
 
-            {/* Card 1 */}
-            <TouchableOpacity
-              style={styles.activityItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('Jobs')}
-            >
-              <View style={styles.activityIconCircle}>
-                <Ionicons name="hammer-outline" size={18} color="#2563EB" />
-              </View>
-              <View style={styles.activityTextContainer}>
-                <Text style={styles.activityTitle}>Logo Design Project</Text>
-                <Text style={styles.activitySubtitle}>Bid placed • 5 min ago</Text>
-              </View>
-              <Text style={styles.activityAmount}>$120</Text>
-            </TouchableOpacity>
-
-            {/* Card 2 */}
-            <TouchableOpacity
-              style={styles.activityItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('MyJobs')}
-            >
-              <View style={styles.activityIconCircle}>
-                <Ionicons name="code-slash-outline" size={18} color="#2563EB" />
-              </View>
-              <View style={styles.activityTextContainer}>
-                <Text style={styles.activityTitle}>React Native Fixes</Text>
-                <Text style={styles.activitySubtitle}>Job created • 1h ago</Text>
-              </View>
-              <Text style={styles.activityAmount}>$250</Text>
-            </TouchableOpacity>
-
-            {/* Card 3 */}
-            <TouchableOpacity
-              style={styles.activityItem}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('Messages')}
-            >
-              <View style={styles.activityIconCircle}>
-                <Ionicons
-                  name="chatbubble-ellipses-outline"
-                  size={18}
-                  color="#2563EB"
-                />
-              </View>
-              <View style={styles.activityTextContainer}>
-                <Text style={styles.activityTitle}>New message</Text>
-                <Text style={styles.activitySubtitle}>From: John Doe</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-            </TouchableOpacity>
+          {/* 3. DRAG HANDLE */}
+          <View style={styles.dragHandleContainer}>
+            <Animated.View style={{ transform: [{ rotate: arrowRotation }] }}>
+               <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.3)" />
+            </Animated.View>
           </View>
-        </ScrollView>
 
-        {/* BOTTOM BAR WITH FAB INSIDE ON THE LEFT */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={styles.fabInBar}
-            onPress={goToCreateJob}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="add" size={26} color="#FFFFFF" />
+        </LinearGradient>
+      </Animated.View>
+
+      {/* --- SCROLL CONTENT --- */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: HEADER_MIN_HEIGHT + 20 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* BALANCE CARD */}
+        <LinearGradient
+          colors={['#2563EB', '#1D4ED8']}
+          start={{x: 0, y: 0}} end={{x: 1, y: 1}}
+          style={styles.balanceCard}
+        >
+          <View>
+            <Text style={styles.balanceLabel}>Available Balance</Text>
+            <Text style={styles.balanceAmount}>$ 1,250.00</Text>
+          </View>
+          <TouchableOpacity style={styles.withdrawBtn}>
+            <Text style={styles.withdrawText}>Withdraw</Text>
+            <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+          </TouchableOpacity>
+        </LinearGradient>
+
+        {/* QUICK ACTIONS GRID */}
+        <Text style={styles.sectionTitle}>Overview</Text>
+        <View style={styles.gridContainer}>
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate('Jobs')}>
+            <View style={[styles.gridIcon, {backgroundColor: '#DBEAFE'}]}>
+              <Ionicons name="briefcase" size={22} color={COLORS.primary} />
+            </View>
+            <Text style={styles.gridLabel}>Jobs</Text>
           </TouchableOpacity>
 
-          <View style={styles.bottomNavItemsWrapper}>
-            {bottomNavItems.map((item) => (
-              <TouchableOpacity
-                key={item.label}
-                style={styles.bottomItem}
-                onPress={() => navigation.navigate(item.screen)}
-              >
-                <Ionicons
-                  name={item.icon}
-                  size={22}
-                  color={item.label === 'Home' ? '#2563EB' : '#6B7280'}
-                />
-                <Text
-                  style={[
-                    styles.bottomLabel,
-                    item.label === 'Home' && styles.bottomLabelActive,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate('CreateJob')}>
+            <View style={[styles.gridIcon, {backgroundColor: '#DCFCE7'}]}>
+              <Ionicons name="add-circle" size={22} color={COLORS.success} />
+            </View>
+            <Text style={styles.gridLabel}>Post</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate('Messages')}>
+            <View style={[styles.gridIcon, {backgroundColor: '#FEF3C7'}]}>
+              <Ionicons name="chatbubbles" size={22} color="#D97706" />
+            </View>
+            <Text style={styles.gridLabel}>Chat</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate('Bids' as any)}>
+            <View style={[styles.gridIcon, {backgroundColor: '#F3E8FF'}]}>
+              <Ionicons name="document-text" size={22} color="#9333EA" />
+            </View>
+            <Text style={styles.gridLabel}>Bids</Text>
+          </TouchableOpacity>
         </View>
+
+        {/* RECENT ACTIVITY */}
+        <View style={styles.recentHeader}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <Text style={styles.seeAll}>See All</Text>
+        </View>
+        
+        {[1,2,3].map((i) => (
+          <View key={i} style={styles.activityItem}>
+            <View style={styles.activityIcon}>
+              <Ionicons name={i === 2 ? "arrow-up" : "arrow-down"} size={18} color={i===2 ? "#EF4444" : "#10B981"} />
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={styles.actTitle}>{i === 2 ? "Withdrawal" : "Payment Received"}</Text>
+              <Text style={styles.actDate}>Today, 10:23 AM</Text>
+            </View>
+            <Text style={styles.actAmount}>{i === 2 ? "- $250.00" : "+ $120.00"}</Text>
+          </View>
+        ))}
+
+        <View style={{height: 100}} />
+      </ScrollView>
+
+      {/* --- BOTTOM BAR --- */}
+      <View style={styles.bottomBar}>
+        <View style={styles.bottomIcons}>
+           <TouchableOpacity style={styles.navItem}><Ionicons name="home" size={24} color={COLORS.primary}/></TouchableOpacity>
+           <TouchableOpacity style={styles.navItem} onPress={()=>navigation.navigate('Jobs')}><Ionicons name="search" size={24} color="#94A3B8"/></TouchableOpacity>
+           <View style={{width: FAB_SIZE}} /> 
+           <TouchableOpacity style={styles.navItem} onPress={()=>navigation.navigate('Messages')}><Ionicons name="chatbubble-ellipses" size={24} color="#94A3B8"/></TouchableOpacity>
+           <TouchableOpacity style={styles.navItem} onPress={()=>navigation.navigate('Settings')}><Ionicons name="person" size={24} color="#94A3B8"/></TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('CreateJob')}>
+          <LinearGradient colors={['#2563EB', '#3B82F6']} style={styles.fabGradient}>
+             <Ionicons name="add" size={32} color="#FFF" />
+          </LinearGradient>
+        </TouchableOpacity>
       </View>
-    </SafeAreaView>
+
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  mainContainer: {
     flex: 1,
-    backgroundColor: '#020617', // status bar area
+    backgroundColor: COLORS.bg,
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 130, // slightly tighter, reduces white space
-    paddingHorizontal: 16,
-    paddingBottom: BOTTOM_BAR_HEIGHT + 16,
-  },
-
-  /* TOP SEARCH STRIP */
-  topSearchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  topAvatarCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  searchPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#334155',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  searchText: {
-    marginLeft: 8,
-    color: '#E5E7EB',
-    fontSize: 13,
-  },
-  topIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-
-  /* BALANCE CARD */
-  balanceWrapper: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  balanceCard: {
-    width: '100%',
-    borderRadius: 18,
-    padding: 16,
-    backgroundColor: '#2563EB',
-  },
-  balanceLabel: {
-    fontSize: 13,
-    color: '#DBEAFE',
-    marginBottom: 4,
-  },
-  balanceAmount: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#F9FAFB',
-  },
-  balanceSub: {
-    fontSize: 12,
-    color: '#E5E7EB',
-    marginTop: 6,
-  },
-  balanceActionsRow: {
-    flexDirection: 'row',
-    marginTop: 12,
-  },
-  balanceAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 18,
-  },
-  balanceActionText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#EFF6FF',
-    fontWeight: '500',
-  },
-
-  /* QUICK ACTION ICONS */
-  quickActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  quickAction: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  quickActionIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#1D4ED8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  quickActionText: {
-    fontSize: 12,
-    color: '#111827',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-
-  /* RECENT ACTIVITY */
-  recentSection: {
-    marginTop: 4,
-  },
-  recentHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  recentTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  recentViewAll: {
-    fontSize: 12,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  activityIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E0EBFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  activityTextContainer: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  activitySubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  activityAmount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-
-  /* DRAGGABLE TOP SHEET */
-  sheetContainer: {
+  
+  // --- HEADER STYLES ---
+  headerContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    zIndex: 20,
+    zIndex: 100, 
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  sheetGradient: {
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
+  headerGradient: {
+    flex: 1,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    paddingTop: STATUS_BAR_HEIGHT + 5, // Tighter top padding
+    paddingHorizontal: 20,
+    overflow: 'hidden',
   },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#4B5563',
-    marginBottom: 6,
+  compactRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: 50, // Slightly shorter row
   },
-  sheetHeaderRow: {
+  userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  sheetAvatar: {
+  avatarContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#1D4ED8',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  headerAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.success,
+    borderWidth: 1.5,
+    borderColor: '#1E293B',
+  },
+  greetingText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  statusText: {
+    color: COLORS.secondaryText,
+    fontSize: 11,
+  },
+  headerIcons: {
+    flexDirection: 'row',
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 9,
+    width: 7,
+    height: 7,
+    backgroundColor: '#EF4444',
+    borderRadius: 3.5,
+  },
+
+  // Expanded Content
+  expandedContent: {
+    marginTop: 8,
+    flex: 1,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginVertical: 12,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    padding: 12,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  verticalLine: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  statLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginBottom: 2,
+  },
+  statValue: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  expandedActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  expButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 30,
+    flex: 0.48,
+    justifyContent: 'center',
+  },
+  logoutBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  expButtonText: {
+    color: '#FFF',
+    marginLeft: 6,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+
+  dragHandleContainer: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 6,
+    height: 24,
+  },
+
+  // --- BODY STYLES ---
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  
+  balanceCard: {
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: COLORS.primary,
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  balanceLabel: {
+    color: '#BFDBFE',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  balanceAmount: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  withdrawBtn: {
+    backgroundColor: '#FFF',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  withdrawText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 12,
+    marginRight: 4,
+  },
+
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.dark,
+    marginBottom: 12,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  gridItem: {
+    alignItems: 'center',
+    width: width / 4.5,
+  },
+  gridIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  gridLabel: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+
+  recentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  seeAll: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  activityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
-  sheetName: {
-    fontSize: 16,
+  actTitle: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#F9FAFB',
+    color: COLORS.dark,
   },
-  sheetMeta: {
+  actDate: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  actAmount: {
     fontSize: 13,
-    color: '#C7D2FE',
-    marginTop: 2,
-  },
-  sheetDetails: {
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  sheetDescription: {
-    fontSize: 13,
-    color: '#E5E7EB',
-    marginBottom: 6,
-  },
-  sheetInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  sheetInfoText: {
-    marginLeft: 6,
-    fontSize: 13,
-    color: '#E5E7EB',
-  },
-  sheetLogoutButton: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
-  },
-  sheetLogoutText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#B91C1C',
+    fontWeight: '700',
+    color: COLORS.dark,
   },
 
-  /* BOTTOM BAR + FAB INSIDE */
+  // --- BOTTOM BAR ---
   bottomBar: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
     height: BOTTOM_BAR_HEIGHT,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: -1 },
-    elevation: 10,
-    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 20,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
-  fabInBar: {
+  bottomIcons: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 14,
+  },
+  navItem: {
+    padding: 8,
+  },
+  fab: {
+    position: 'absolute',
+    top: -24,
+    alignSelf: 'center',
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  fabGradient: {
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
-    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-  },
-  bottomNavItemsWrapper: {
-    flexDirection: 'row',
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  bottomItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomLabel: {
-    fontSize: 11,
-    marginTop: 4,
-    color: '#6B7280',
-  },
-  bottomLabelActive: {
-    color: '#2563EB',
-    fontWeight: '600',
+    borderWidth: 4,
+    borderColor: '#F1F5F9', 
   },
 });
