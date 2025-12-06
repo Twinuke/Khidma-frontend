@@ -5,38 +5,26 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
+  Image,
   ActivityIndicator,
   Alert,
-  Dimensions,
+  Modal,
   Platform,
-  KeyboardAvoidingView,
   LayoutAnimation,
   UIManager,
-  Modal,
-  Image,
-  Keyboard,
-  TouchableWithoutFeedback,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios'; 
-import AsyncStorage from '@react-native-async-storage/async-storage'; 
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import { ScreenWrapper } from '../../components/ScreenWrapper'; 
+import { useUser, User } from '../context/UserContext';
 
-// Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-
-// --- CONFIGURATION ---
-const API_BASE_URL = "http://192.168.1.103:5257/api"; 
-
-const { width } = Dimensions.get('window');
 
 // --- LEBANON CITIES DATA ---
 const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
@@ -56,37 +44,18 @@ const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
 
 const CITY_KEYS = Object.keys(LEBANESE_CITIES);
 
-// --- TYPES ---
-interface UserProfile {
-  userId: number;
-  fullName: string;
-  email: string;
-  phoneNumber?: string;
-  profileBio?: string;
-  profileImageUrl?: string;
-  city?: string;
-  latitude?: number;
-  longitude?: number;
-  userType?: number; 
-}
-
 export default function Profile() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const { user, updateUser, isLoading, logout } = useUser(); 
   const mapRef = useRef<MapView>(null);
-
-  // --- STATE ---
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [userData, setUserData] = useState<UserProfile | null>(null);
-
-  // Form Fields
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [bio, setBio] = useState('');
-  const [profileImage, setProfileImage] = useState<string | null>(null); 
-  const [profileImageBase64, setProfileImageBase64] = useState<string | null>(null); 
   
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Form State
+  const [formData, setFormData] = useState<Partial<User>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   // Location State
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [isLocationFixed, setIsLocationFixed] = useState(false); 
@@ -97,90 +66,117 @@ export default function Profile() {
     longitudeDelta: 0.05,
   });
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
-
-  // UI State
   const [modalVisible, setModalVisible] = useState(false);
 
-  // --- EFFECTS ---
+  // Initialize form
   useEffect(() => {
-    fetchUserData();
-  }, []);
+    if (user) {
+      initializeForm(user);
+    }
+  }, [user, isEditing]);
 
-  const fetchUserData = async () => {
-    setLoading(true);
-    try {
-      const currentUserId = 1; // TODO: Get dynamically
-      
-      const token = await AsyncStorage.getItem('authToken');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+  const initializeForm = (userData: User) => {
+    setFormData({
+      fullName: userData.fullName,
+      email: userData.email,
+      phoneNumber: userData.phoneNumber,
+      profileBio: userData.profileBio,
+      city: userData.city,
+      profileImageUrl: userData.profileImageUrl,
+      latitude: userData.latitude,
+      longitude: userData.longitude,
+    });
 
-      const response = await axios.get(`${API_BASE_URL}/Users/${currentUserId}`, config);
-      
-      const data: UserProfile = response.data;
-      setUserData(data);
-      
-      setFullName(data.fullName);
-      setEmail(data.email);
-      // Fix: Ensure phone is string or empty
-      setPhone(data.phoneNumber || ''); 
-      setBio(data.profileBio || '');
-      
-      if (data.profileImageUrl) {
-        const img = data.profileImageUrl.startsWith('http') || data.profileImageUrl.startsWith('data:') 
-          ? data.profileImageUrl 
-          : `data:image/jpeg;base64,${data.profileImageUrl}`;
-        setProfileImage(img);
-      }
-      
-      if (data.city) {
-        setSelectedCity(data.city);
-        // If city is "Current Location", we assume it was set via GPS and lock it
-        if (data.city === "Current Location") setIsLocationFixed(true);
-      }
-      
-      if (data.latitude && data.longitude) {
-        setPinCoords({ lat: data.latitude, lng: data.longitude });
-        setRegion({
-          latitude: data.latitude,
-          longitude: data.longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
-      }
+    if (userData.city) setSelectedCity(userData.city);
+    if (userData.city === "Current Location") setIsLocationFixed(true);
 
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Failed to load profile');
-    } finally {
-      setLoading(false);
+    if (userData.latitude && userData.longitude) {
+      setPinCoords({ lat: userData.latitude, lng: userData.longitude });
+      setRegion({
+        latitude: userData.latitude,
+        longitude: userData.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
     }
   };
 
-  // --- ACTIONS ---
+  const validate = () => {
+    let valid = true;
+    let newErrors: Record<string, string> = {};
 
-  const handleCameraPress = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    
-    if (status !== 'granted') {
-      Alert.alert("Permission Denied", "Camera access is needed to change your profile photo.");
+    if (!formData.fullName?.trim()) {
+      newErrors.fullName = "Full name is required";
+      valid = false;
+    }
+    if (!formData.email?.trim() || !formData.email.includes('@')) {
+      newErrors.email = "Valid email is required";
+      valid = false;
+    }
+    if (!formData.phoneNumber?.trim()) {
+      newErrors.phoneNumber = "Phone number is required";
+      valid = false;
+    }
+    setErrors(newErrors);
+    return valid;
+  };
+
+  const handleSave = async () => {
+    if (!validate()) {
+      Alert.alert("Check Fields", "Please fix the errors highlighted in red.");
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+    setIsSaving(true);
+    try {
+      // Ensure we send the location data from the map state
+      const finalData = {
+        fullName: formData.fullName,
+        email: formData.email,
+        phoneNumber: formData.phoneNumber,
+        profileBio: formData.profileBio,
+        profileImageUrl: formData.profileImageUrl,
+        city: selectedCity,
+        latitude: pinCoords?.lat,
+        longitude: pinCoords?.lng,
+      };
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0];
-      setProfileImage(asset.uri); // Show immediate preview
-      if (asset.base64) {
-        // Store base64 to send to backend on Save
-        setProfileImageBase64(asset.base64);
+      await updateUser(finalData); 
+      Alert.alert("Success", "Profile updated successfully!");
+      setIsEditing(false);
+    } catch (error: any) {
+      console.error("Save Error:", error);
+      const msg = error.response?.data?.message || error.response?.data?.title || "Failed to update profile.";
+      Alert.alert("Error", typeof msg === 'object' ? JSON.stringify(msg) : msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleImagePick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert("Permission Needed", "We need access to your photos.");
+      return;
+    }
+
+    try {
+      // ✅ FIX: Use string array to avoid Enum errors in newer Expo versions
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], 
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.2, // Low quality to prevent payload size errors
+        base64: true, 
+      });
+
+      if (!result.canceled && result.assets[0].base64) {
+        const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        setFormData(prev => ({ ...prev, profileImageUrl: base64Img }));
       }
+    } catch (e) {
+      console.log("Image Picker Error:", e);
+      Alert.alert("Error", "Failed to pick image.");
     }
   };
 
@@ -188,7 +184,6 @@ export default function Profile() {
     const { status } = await Location.requestForegroundPermissionsAsync();
     
     if (status === 'granted') {
-      setLoading(true);
       try {
         const location = await Location.getCurrentPositionAsync({});
         const { latitude, longitude } = location.coords;
@@ -196,30 +191,15 @@ export default function Profile() {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         
         setPinCoords({ lat: latitude, lng: longitude });
-        setRegion({
-          latitude,
-          longitude,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
-        
+        setRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
         setSelectedCity("Current Location"); 
-        setIsLocationFixed(true); // LOCK EDITING
+        setIsLocationFixed(true);
 
         if (mapRef.current) {
-          mapRef.current.animateToRegion({
-            latitude,
-            longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }, 1000);
+          mapRef.current.animateToRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 1000);
         }
-
       } catch (err) {
-        Alert.alert("Error", "Could not fetch location. Please select manually.");
-        setModalVisible(true);
-      } finally {
-        setLoading(false);
+        Alert.alert("Error", "Could not fetch location.");
       }
     } else {
       setIsLocationFixed(false);
@@ -236,68 +216,13 @@ export default function Profile() {
     const coords = LEBANESE_CITIES[city];
     if (coords) {
       setPinCoords(coords);
-      const newRegion = {
-        latitude: coords.lat,
-        longitude: coords.lng,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      };
+      const newRegion = { latitude: coords.lat, longitude: coords.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
       setRegion(newRegion);
-      
-      if (mapRef.current) {
-        mapRef.current.animateToRegion(newRegion, 1000);
-      }
+      if (mapRef.current) mapRef.current.animateToRegion(newRegion, 1000);
     }
   };
 
-  const handleSave = async () => {
-    if (!fullName.trim() || !email.trim()) {
-      Alert.alert('Missing Info', 'Name and Email are required.');
-      return;
-    }
-    if (email && !email.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
-      return;
-    }
-
-    if (!userData) {
-      Alert.alert('Error', 'User data not loaded');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        ...userData,
-        fullName,
-        email,
-        phoneNumber: phone,
-        profileBio: bio,
-        city: selectedCity,
-        latitude: pinCoords?.lat,
-        longitude: pinCoords?.lng,
-        // If we have a new base64 image, send it. Otherwise keep existing URL/string.
-        profileImageUrl: profileImageBase64 || userData.profileImageUrl, 
-      };
-
-      const token = await AsyncStorage.getItem('authToken');
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
-      await axios.put(`${API_BASE_URL}/Users/${userData.userId}`, payload, config);
-
-      // Success - Go back to Home which will auto-refresh via useFocusEffect
-      navigation.goBack();
-
-    } catch (error: any) {
-      console.error(error);
-      const errorMessage = error.response?.data?.title || error.message || 'Update failed';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading && !userData) {
+  if (isLoading) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#2563EB" />
@@ -305,503 +230,317 @@ export default function Profile() {
     );
   }
 
+  if (!user) {
+    return (
+      <View style={styles.centerContainer}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorText}>User profile could not be loaded.</Text>
+        <TouchableOpacity style={styles.loginBtn} onPress={() => { logout(); /* Auth flow handles nav */ }}>
+          <Text style={styles.loginBtnText}>Go to Login</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const renderInput = (label: string, field: keyof User, placeholder: string, multiline = false, keyboardType: any = 'default') => (
+    <View style={styles.inputGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.textArea, errors[field] && styles.inputError]}
+        value={formData[field]?.toString()}
+        onChangeText={(text) => {
+          setFormData(prev => ({ ...prev, [field]: text }));
+          if (errors[field]) setErrors(prev => ({...prev, [field]: ''}));
+        }}
+        placeholder={placeholder}
+        multiline={multiline}
+        keyboardType={keyboardType}
+        editable={isEditing}
+      />
+      {errors[field] && <Text style={styles.fieldErrorText}>{errors[field]}</Text>}
+    </View>
+  );
+
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={styles.container}>
-        {/* Header - Compact */}
-        <View style={styles.headerContainer}>
-          <LinearGradient
-              colors={['#0F172A', '#1E293B']}
-              style={styles.headerGradient}
-          >
-            <SafeAreaView style={styles.safeHeader}>
-              <View style={styles.navBar}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
-                  <Ionicons name="arrow-back" size={22} color="#FFF" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Edit Profile</Text>
-                <View style={{ width: 36 }} /> 
+    <ScreenWrapper scrollable={true} style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{isEditing ? "Edit Profile" : "My Profile"}</Text>
+        <TouchableOpacity 
+          onPress={() => {
+            if (isEditing) {
+              setIsEditing(false); // Cancel
+              setErrors({});
+              if (user) initializeForm(user);
+            } else {
+              setIsEditing(true);
+            }
+          }} 
+          style={styles.editButton}
+        >
+          <Text style={styles.editButtonText}>{isEditing ? "Cancel" : "Edit"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.content}>
+        {/* Avatar Section */}
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatarWrapper}>
+            {(isEditing ? formData.profileImageUrl : user.profileImageUrl) ? (
+              <Image 
+                source={{ uri: isEditing ? formData.profileImageUrl : user.profileImageUrl }} 
+                style={styles.avatar} 
+              />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                <Text style={styles.avatarInitials}>
+                  {user.fullName?.charAt(0).toUpperCase() || "U"}
+                </Text>
               </View>
-            </SafeAreaView>
-          </LinearGradient>
+            )}
+            
+            {isEditing && (
+              <TouchableOpacity style={styles.cameraButton} onPress={handleImagePick}>
+                <Ionicons name="camera" size={20} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          {!isEditing && (
+            <>
+              <Text style={styles.userName}>{user.fullName}</Text>
+              <Text style={styles.userRole}>
+                {user.userType === 1 ? 'Client' : 'Freelancer'} • {user.city || 'No Location'}
+              </Text>
+            </>
+          )}
         </View>
 
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            
-            {/* Avatar Section */}
-            <View style={styles.avatarSection}>
-              <View style={styles.avatarCircle}>
-                {profileImage ? (
-                  <Image source={{ uri: profileImage }} style={styles.avatarImage} />
-                ) : (
-                  <Ionicons name="person" size={40} color="#CBD5E1" />
-                )}
-                
-                {/* Camera Button - Fixed Visibility */}
-                <TouchableOpacity style={styles.cameraBtn} onPress={handleCameraPress} activeOpacity={0.8}>
-                  <View style={styles.cameraIconBg}>
-                    <Ionicons name="camera" size={18} color="#FFF" />
-                  </View>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.avatarName}>{fullName || 'User Name'}</Text>
-              <Text style={styles.avatarSub}>Update your details below</Text>
-            </View>
+        {/* Form Sections */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Basic Information</Text>
+          {renderInput("Full Name", "fullName", "John Doe")}
+          {renderInput("Email", "email", "john@example.com", false, "email-address")}
+          {renderInput("Phone", "phoneNumber", "+961 ...", false, "phone-pad")}
+        </View>
 
-            {/* Personal Info Card */}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Personal Information</Text>
-              
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Full Name</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="person-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={fullName}
-                    onChangeText={setFullName}
-                    placeholder="John Doe"
-                  />
-                </View>
-              </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Details</Text>
+          {renderInput("Bio", "profileBio", "Tell us about yourself...", true)}
+          
+          <Text style={styles.label}>Location</Text>
+          {isEditing ? (
+            <TouchableOpacity style={styles.citySelector} onPress={() => setModalVisible(true)}>
+              <Text style={styles.citySelectorText}>{selectedCity || "Select City"}</Text>
+              <Ionicons name="chevron-down" size={20} color="#64748B" />
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.readOnlyText}>{user.city || "Not set"}</Text>
+          )}
+          
+          {/* Helper for GPS */}
+          {isEditing && (
+            <TouchableOpacity style={styles.gpsButton} onPress={handleLocationPress}>
+              <Ionicons name="locate" size={18} color="#2563EB" />
+              <Text style={styles.gpsButtonText}>Use Current Location</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Email Address</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="john@example.com"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Phone Number</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="call-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    value={phone}
-                    onChangeText={setPhone}
-                    placeholder="+961 70 000000"
-                    keyboardType="phone-pad"
-                  />
-                </View>
-              </View>
-              
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Bio</Text>
-                <View style={[styles.inputWrapper, { height: 100, alignItems: 'flex-start' }]}>
-                  <Ionicons name="document-text-outline" size={20} color="#94A3B8" style={[styles.inputIcon, { marginTop: 12 }]} />
-                  <TextInput
-                    style={[styles.input, { height: 100, paddingTop: 12 }]}
-                    value={bio}
-                    onChangeText={setBio}
-                    placeholder="Tell us a bit about yourself..."
-                    multiline
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* Location Card */}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Location</Text>
-              <Text style={styles.sectionSub}>
-                {isLocationFixed ? "Location locked by GPS." : "Tap to select your city or check GPS."}
-              </Text>
-
-              <TouchableOpacity 
-                style={styles.citySelector} 
-                onPress={handleLocationPress}
-                activeOpacity={0.8}
+        {/* Map Preview (Visible if location set) */}
+        {(selectedCity || pinCoords) && (
+          <View style={styles.mapContainer}>
+             <MapView
+                ref={mapRef}
+                style={styles.map}
+                region={region}
+                scrollEnabled={false}
+                zoomEnabled={false}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                  <View style={styles.pinIconBox}>
-                    <Ionicons name="location" size={20} color={isLocationFixed ? "#10B981" : "#2563EB"} />
-                  </View>
-                  <Text style={[styles.citySelectorText, !selectedCity && { color: '#94A3B8' }]}>
-                    {selectedCity || 'Set Location'}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-              </TouchableOpacity>
+                {pinCoords && (
+                  <Marker coordinate={{ latitude: pinCoords.lat, longitude: pinCoords.lng }} />
+                )}
+              </MapView>
+          </View>
+        )}
 
-              {selectedCity ? (
-                <View style={styles.mapContainer}>
-                  <MapView
-                    ref={mapRef}
-                    style={styles.map}
-                    provider={undefined} 
-                    region={region}
-                    scrollEnabled={!isLocationFixed} // LOCK IF FIXED
-                    zoomEnabled={true}
-                    onRegionChangeComplete={(r) => {
-                      if (!isLocationFixed) {
-                        setPinCoords({ lat: r.latitude, lng: r.longitude });
-                      }
-                    }}
-                  >
-                    {pinCoords && (
-                      <Marker
-                        coordinate={{ latitude: pinCoords.lat, longitude: pinCoords.lng }}
-                        title={selectedCity}
-                        pinColor={isLocationFixed ? "#10B981" : "#ef4444"}
-                        description={isLocationFixed ? "Fixed GPS Location" : "Drag map to adjust"}
-                      />
-                    )}
-                  </MapView>
-                  
-                  {!isLocationFixed && (
-                    <View style={styles.mapOverlay}>
-                        <Text style={styles.mapOverlayText}>Drag map to adjust pin</Text>
-                    </View>
-                  )}
-                  
-                  {isLocationFixed && (
-                    <View style={[styles.mapOverlay, { backgroundColor: '#10B981' }]}>
-                        <Text style={styles.mapOverlayText}>Exact GPS Location</Text>
-                    </View>
-                  )}
-                </View>
-              ) : null}
-            </View>
-
-            <View style={{ height: 100 }} />
-
-          </ScrollView>
-        </KeyboardAvoidingView>
-
-        <View style={styles.footer}>
+        {/* Action Buttons */}
+        {isEditing ? (
           <TouchableOpacity 
-            style={styles.saveBtn} 
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
             onPress={handleSave}
-            disabled={saving}
+            disabled={isSaving}
           >
-            {saving ? (
+            {isSaving ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+              <Text style={styles.saveButtonText}>Save Changes</Text>
             )}
           </TouchableOpacity>
-        </View>
-
-        {/* City Selection Modal */}
-        <Modal
-          visible={modalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select City</Text>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={24} color="#64748B" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-                {CITY_KEYS.map((city) => (
-                  <TouchableOpacity
-                    key={city}
-                    style={styles.cityOption}
-                    onPress={() => handleCitySelect(city)}
-                  >
-                    <Text style={[
-                      styles.cityOptionText, 
-                      selectedCity === city && { color: '#2563EB', fontWeight: '700' }
-                    ]}>{city}</Text>
-                    {selectedCity === city && <Ionicons name="checkmark" size={20} color="#2563EB" />}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-
+        ) : (
+          <TouchableOpacity style={styles.logoutButton} onPress={async () => {
+              await logout();
+              // No need for manual navigate, App.tsx Auth Stack handles it
+          }}>
+            <Text style={styles.logoutButtonText}>Log Out</Text>
+          </TouchableOpacity>
+        )}
       </View>
-    </TouchableWithoutFeedback>
+
+      {/* City Modal */}
+      <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select City</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {CITY_KEYS.map((city) => (
+                <TouchableOpacity key={city} style={styles.cityOption} onPress={() => handleCitySelect(city)}>
+                  <Text style={[styles.cityOptionText, selectedCity === city && { color: '#2563EB', fontWeight: '700' }]}>{city}</Text>
+                  {selectedCity === city && <Ionicons name="checkmark" size={20} color="#2563EB" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F1F5F9', 
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-  },
-  headerContainer: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    zIndex: 10,
-  },
-  headerGradient: {
-    paddingBottom: 10, 
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  safeHeader: {
-    paddingTop: Platform.OS === 'android' ? 35 : 0,
-  },
-  navBar: {
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 20 },
+  errorText: { color: '#64748B', fontSize: 16, marginTop: 12, marginBottom: 20, textAlign: 'center' },
+  loginBtn: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 },
+  loginBtnText: { color: '#FFF', fontWeight: '600' },
+  
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    marginTop: 5, 
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-  },
-  headerTitle: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: 20,
-  },
-  avatarSection: {
-    alignItems: 'center',
-    marginTop: -30, 
-    marginBottom: 20,
-  },
-  avatarCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    paddingTop: 10,
+    paddingBottom: 10,
     backgroundColor: '#FFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    // overflow: 'hidden', // Removed so camera button can pop out slightly if needed
-    position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
-  avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50, // Match container
-  },
-  cameraBtn: {
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  iconButton: { padding: 8 },
+  editButton: { padding: 8 },
+  editButtonText: { color: '#2563EB', fontWeight: '600', fontSize: 16 },
+
+  content: { padding: 20, paddingBottom: 40 },
+
+  avatarContainer: { alignItems: 'center', marginBottom: 24 },
+  avatarWrapper: { position: 'relative' },
+  avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#FFF' },
+  avatarPlaceholder: { backgroundColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center' },
+  avatarInitials: { fontSize: 36, fontWeight: '700', color: '#FFF' },
+  cameraButton: {
     position: 'absolute',
     bottom: 0,
     right: 0,
-    zIndex: 10,
-  },
-  cameraIconBg: {
     backgroundColor: '#2563EB',
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#FFF', // Thick white border to separate from image
+    borderWidth: 2,
+    borderColor: '#FFF',
   },
-  avatarName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginTop: 12,
-  },
-  avatarSub: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  card: {
+  userName: { fontSize: 22, fontWeight: '700', color: '#0F172A', marginTop: 12 },
+  userRole: { fontSize: 14, color: '#64748B', marginTop: 4 },
+
+  section: {
     backgroundColor: '#FFF',
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 18,
-    shadowColor: '#64748B',
-    shadowOffset: { width: 0, height: 2 },
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
     shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowRadius: 5,
     elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  sectionSub: {
-    fontSize: 11,
-    color: '#64748B',
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 6,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    height: 48,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
+  sectionHeader: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 16 },
+  
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '600', color: '#64748B', marginBottom: 6 },
   input: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1E293B',
-  },
-  citySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#F1F5F9',
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
-  },
-  pinIconBox: {
-    width: 30,
-    height: 30,
     borderRadius: 8,
-    backgroundColor: '#DBEAFE',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  citySelectorText: {
-    fontSize: 14,
-    fontWeight: '600',
+    padding: 12,
+    fontSize: 15,
     color: '#0F172A',
-  },
-  mapContainer: {
-    height: 180,
-    borderRadius: 16,
-    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    position: 'relative',
   },
-  map: {
-    width: '100%',
-    height: '100%',
-  },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: 10,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  mapOverlayText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFF',
-    padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 20,
-  },
-  saveBtn: {
-    backgroundColor: '#2563EB',
-    height: 50,
-    borderRadius: 14,
-    justifyContent: 'center',
+  inputError: { borderColor: '#EF4444', borderWidth: 1 },
+  fieldErrorText: { color: '#EF4444', fontSize: 12, marginTop: 4 },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  readOnlyText: { fontSize: 15, color: '#334155', paddingVertical: 4 },
+
+  citySelector: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  citySelectorText: { color: '#0F172A', fontSize: 15 },
+  gpsButton: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
+  gpsButtonText: { color: '#2563EB', fontWeight: '600', marginLeft: 6 },
+
+  mapContainer: {
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  map: { width: '100%', height: '100%' },
+
+  saveButton: {
+    backgroundColor: '#2563EB',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 30,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  saveBtnText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#FFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: '60%',
-    padding: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  cityOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  saveButtonDisabled: { backgroundColor: '#93C5FD' },
+  saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+  logoutButton: {
+    backgroundColor: '#FEE2E2',
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 30,
   },
-  cityOptionText: {
-    fontSize: 16,
-    color: '#334155',
-  },
+  logoutButtonText: { color: '#EF4444', fontSize: 16, fontWeight: '700' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContainer: { backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '60%', padding: 24 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  cityOption: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  cityOptionText: { fontSize: 16, color: '#334155' },
 });

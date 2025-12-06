@@ -2,14 +2,20 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
+import { View } from 'react-native'; // Added View
 
+import { UserProvider, useUser } from './src/context/UserContext';
 import SplashScreenComponent from './src/components/SplashScreen';
-import Home from './src/pages/Home';
+
+// --- Auth Screens ---
 import Login from './src/pages/Login';
 import PhoneNumberEntry from './src/pages/PhoneNumberEntry';
-import RegistrationForm from './src/pages/RegistrationForm';
 import EmailVerification from './src/pages/EmailVerification';
+import RegistrationForm from './src/pages/RegistrationForm';
+
+// --- App Screens ---
+import Home from './src/pages/Home';
 import Profile from './src/pages/Profile';
 import Jobs from './src/pages/Jobs';
 import JobDetails from './src/pages/JobDetails';
@@ -39,49 +45,71 @@ export type RootStackParamList = {
   Search: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const AuthStack = createNativeStackNavigator();
+const AppStack = createNativeStackNavigator();
+
+// 1. Define Auth Flow
+const AuthNavigator = () => (
+  <AuthStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+    <AuthStack.Screen name="Login" component={Login} />
+    <AuthStack.Screen name="RegistrationForm" component={RegistrationForm} />
+    <AuthStack.Screen name="PhoneNumberEntry" component={PhoneNumberEntry} />
+    <AuthStack.Screen name="EmailVerification" component={EmailVerification} />
+  </AuthStack.Navigator>
+);
+
+// 2. Define App Flow (Protected)
+const AppNavigator = () => (
+  <AppStack.Navigator screenOptions={{ headerShown: false }}>
+    <AppStack.Screen name="Home" component={Home} />
+    <AppStack.Screen name="Profile" component={Profile} />
+    <AppStack.Screen name="Jobs" component={Jobs} />
+    <AppStack.Screen name="JobDetails" component={JobDetails} />
+    <AppStack.Screen name="CreateJob" component={CreateJob} />
+    <AppStack.Screen name="MyJobs" component={MyJobs} />
+    <AppStack.Screen name="Bids" component={Bids} />
+    <AppStack.Screen name="Messages" component={Messages} />
+    <AppStack.Screen name="Settings" component={Settings} />
+    <AppStack.Screen name="Notifications" component={Notifications} />
+    <AppStack.Screen name="Search" component={Search} />
+  </AppStack.Navigator>
+);
+
+// 3. Main Navigation Logic
+const NavigationWrapper = () => {
+  const { isLoading, isAuthenticated } = useUser();
+
+  // --- FIX: Hide Native Splash Screen when loading is done ---
+  const onLayoutRootView = useCallback(async () => {
+    if (!isLoading) {
+      // This tells the native app "We are ready, hide the logo"
+      await SplashScreen.hideAsync();
+    }
+  }, [isLoading]);
+
+  if (isLoading) {
+    // While checking token, show your custom splash component
+    return <SplashScreenComponent onFinish={() => {}} />;
+  }
+
+  return (
+    // We attach onLayout here to ensure we hide the splash only after UI is ready to render
+    <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <NavigationContainer>
+        <StatusBar style="auto" />
+        {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+      </NavigationContainer>
+    </View>
+  );
+};
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    // load resources if needed
-  }, []);
-
-  const handleSplashFinish = () => {
-    setIsReady(true);
-  };
-
-  if (!isReady) {
-    return <SplashScreenComponent onFinish={handleSplashFinish} />;
-  }
-
   return (
-    <NavigationContainer>
-      <StatusBar style="auto" />
-      <Stack.Navigator initialRouteName="PhoneNumberEntry" screenOptions={{ headerShown: false }}>
-        {/* Authentication Flow */}
-        <Stack.Screen name="PhoneNumberEntry" component={PhoneNumberEntry} />
-        <Stack.Screen name="EmailVerification" component={EmailVerification} />
-        <Stack.Screen name="RegistrationForm" component={RegistrationForm} />
-        <Stack.Screen name="Login" component={Login} />
-        
-        {/* Main App Screens */}
-        <Stack.Screen name="Home" component={Home} />
-        <Stack.Screen name="Profile" component={Profile} />
-        <Stack.Screen name="Jobs" component={Jobs} />
-        <Stack.Screen name="JobDetails" component={JobDetails} />
-        <Stack.Screen name="CreateJob" component={CreateJob} />
-        <Stack.Screen name="MyJobs" component={MyJobs} />
-        <Stack.Screen name="Bids" component={Bids} />
-        <Stack.Screen name="Messages" component={Messages} />
-        <Stack.Screen name="Settings" component={Settings} />
-        <Stack.Screen name="Notifications" component={Notifications} />
-        <Stack.Screen name="Search" component={Search} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <UserProvider>
+      <NavigationWrapper />
+    </UserProvider>
   );
 }

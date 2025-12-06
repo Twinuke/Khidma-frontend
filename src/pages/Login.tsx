@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,348 +7,141 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
   Easing,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
-import { RootStackParamList } from '../../App';
-import api, { setAuthToken } from '../config/api';
-
-type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
+import { useUser } from '../context/UserContext';
+import { ScreenWrapper } from '../../components/ScreenWrapper';
 
 export default function Login() {
-  const navigation = useNavigation<LoginScreenNavigationProp>();
-  const [isSignup, setIsSignup] = useState(false);
-  const [fullName, setFullName] = useState('');
+  const navigation = useNavigation<any>();
+  const { login } = useUser(); 
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [userType, setUserType] = useState<'Freelancer' | 'Client'>('Freelancer');
   const [loading, setLoading] = useState(false);
 
-  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Animate login form appearance
     Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 800,
-        delay: 200,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
-  }, [fadeAnim, slideAnim, contentOpacity]);
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/login', {
-        email,
-        password,
-      });
-
-      if (response.data.token) {
-        await setAuthToken(response.data.token);
-        Alert.alert('Success', 'Login successful!');
-        navigation.replace('Home');
-      }
+      await login(email, password);
+      // App.tsx handles navigation on auth state change
     } catch (error: any) {
-      Alert.alert(
-        'Login Failed',
-        error.response?.data?.message || 'Invalid email or password'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignup = async () => {
-    if (!fullName || !email || !password) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await api.post('/auth/register', {
-        fullName,
-        email,
-        password,
-        phoneNumber: phoneNumber || undefined,
-        userType: userType,
-      });
-
-      if (response.data.token) {
-        await setAuthToken(response.data.token);
-        Alert.alert('Success', 'Account created successfully!');
-        navigation.replace('Home');
-      }
-    } catch (error: any) {
-      Alert.alert(
-        'Signup Failed',
-        error.response?.data?.message || 'Failed to create account. Please try again.'
-      );
+      const msg = error.response?.data?.message || 'Login failed. Please check your credentials.';
+      Alert.alert('Login Error', msg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <Animated.View style={{ opacity: contentOpacity }}>
-          <Text style={styles.title}>Welcome to Khidma</Text>
-          <Text style={styles.subtitle}>
-            {isSignup ? 'Create your account' : 'Sign in to continue'}
-          </Text>
-        </Animated.View>
+    <ScreenWrapper scrollable={true}>
+      <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        <View style={styles.headerContainer}>
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>Sign in to continue to Khidma</Text>
+        </View>
 
-        <Animated.View style={[styles.form, { opacity: contentOpacity }]}>
-          {isSignup && (
-            <>
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name *"
-                placeholderTextColor="#999"
-                value={fullName}
-                onChangeText={setFullName}
-                autoCapitalize="words"
-              />
-
-              <TextInput
-                style={styles.input}
-                placeholder="Phone Number (optional)"
-                placeholderTextColor="#999"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                keyboardType="phone-pad"
-              />
-
-              <View style={styles.userTypeContainer}>
-                <Text style={styles.userTypeLabel}>I am a:</Text>
-                <View style={styles.userTypeButtons}>
-                  <TouchableOpacity
-                    style={[
-                      styles.userTypeButton,
-                      userType === 'Freelancer' && styles.userTypeButtonActive,
-                    ]}
-                    onPress={() => setUserType('Freelancer')}
-                  >
-                    <Text
-                      style={[
-                        styles.userTypeButtonText,
-                        userType === 'Freelancer' && styles.userTypeButtonTextActive,
-                      ]}
-                    >
-                      Freelancer
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.userTypeButton,
-                      userType === 'Client' && styles.userTypeButtonActive,
-                      { marginRight: 0 },
-                    ]}
-                    onPress={() => setUserType('Client')}
-                  >
-                    <Text
-                      style={[
-                        styles.userTypeButtonText,
-                        userType === 'Client' && styles.userTypeButtonTextActive,
-                      ]}
-                    >
-                      Client
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </>
-          )}
-
+        <View style={styles.form}>
+          <Text style={styles.label}>Email</Text>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder="john@example.com"
             placeholderTextColor="#999"
             value={email}
             onChangeText={setEmail}
-            keyboardType="email-address"
             autoCapitalize="none"
-            autoComplete="email"
+            keyboardType="email-address"
           />
 
+          <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder="Enter your password"
             placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoCapitalize="none"
-            autoComplete="password"
           />
+
+          <TouchableOpacity style={styles.forgotButton}>
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={isSignup ? handleSignup : handleLogin}
+            onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>
-                {isSignup ? 'Create Account' : 'Sign In'}
-              </Text>
+              <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.switchButton}
-            onPress={() => setIsSignup(!isSignup)}
-            disabled={loading}
-          >
-            <Text style={styles.switchButtonText}>
-              {isSignup
-                ? 'Already have an account? Sign In'
-                : "Don't have an account? Sign Up"}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Don't have an account? </Text>
+            {/* FIX: Navigate to PhoneNumberEntry to start proper flow */}
+            <TouchableOpacity onPress={() => navigation.navigate('PhoneNumberEntry')}>
+              <Text style={styles.linkText}>Sign Up</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Animated.View>
-    </KeyboardAvoidingView>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 40,
-    textAlign: 'center',
-  },
-  form: {
-    width: '100%',
-  },
+  content: { flex: 1, padding: 24, justifyContent: 'center' },
+  headerContainer: { marginBottom: 32, alignItems: 'center' },
+  title: { fontSize: 28, fontWeight: 'bold', color: '#0F172A', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#64748B' },
+  form: { width: '100%' },
+  label: { fontSize: 14, fontWeight: '600', color: '#334155', marginBottom: 8, marginLeft: 4 },
   input: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    marginBottom: 16,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E2E8F0',
+    color: '#0F172A',
   },
+  forgotButton: { alignSelf: 'flex-end', marginBottom: 24 },
+  forgotText: { color: '#2563EB', fontWeight: '600' },
   button: {
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
+    backgroundColor: '#2563EB',
+    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginTop: 8,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  switchButton: {
-    marginTop: 20,
-    alignItems: 'center',
-  },
-  switchButtonText: {
-    color: '#007AFF',
-    fontSize: 14,
-  },
-  userTypeContainer: {
-    marginBottom: 16,
-  },
-  userTypeLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  userTypeButtons: {
-    flexDirection: 'row',
-  },
-  userTypeButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  userTypeButtonActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-  userTypeButtonText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  userTypeButtonTextActive: {
-    color: '#fff',
-  },
+  buttonDisabled: { opacity: 0.7, backgroundColor: '#93C5FD' },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
+  footerText: { color: '#64748B', fontSize: 15 },
+  linkText: { color: '#2563EB', fontWeight: 'bold', fontSize: 15 },
 });
-
