@@ -129,8 +129,8 @@ export default function Profile() {
 
     setIsSaving(true);
     try {
-      // Ensure we send the location data from the map state
-      const finalData = {
+      // ✅ FIX: Create a clean payload matching UserUpdateDto
+      const cleanPayload = {
         fullName: formData.fullName,
         email: formData.email,
         phoneNumber: formData.phoneNumber,
@@ -141,7 +141,7 @@ export default function Profile() {
         longitude: pinCoords?.lng,
       };
 
-      await updateUser(finalData); 
+      await updateUser(cleanPayload); 
       Alert.alert("Success", "Profile updated successfully!");
       setIsEditing(false);
     } catch (error: any) {
@@ -161,12 +161,13 @@ export default function Profile() {
     }
 
     try {
-      // ✅ FIX: Use string array to avoid Enum errors in newer Expo versions
+      // ✅ FIX 1: Use ['images'] array (Fixes Deprecation Warning & Crash)
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'], 
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.2, // Low quality to prevent payload size errors
+        // ✅ FIX 2: Quality 0.2 (Fixes 500/400 Error due to massive payload)
+        quality: 0.2, 
         base64: true, 
       });
 
@@ -235,7 +236,7 @@ export default function Profile() {
       <View style={styles.centerContainer}>
         <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
         <Text style={styles.errorText}>User profile could not be loaded.</Text>
-        <TouchableOpacity style={styles.loginBtn} onPress={() => { logout(); /* Auth flow handles nav */ }}>
+        <TouchableOpacity style={styles.loginBtn} onPress={() => { logout(); }}>
           <Text style={styles.loginBtnText}>Go to Login</Text>
         </TouchableOpacity>
       </View>
@@ -383,7 +384,6 @@ export default function Profile() {
         ) : (
           <TouchableOpacity style={styles.logoutButton} onPress={async () => {
               await logout();
-              // No need for manual navigate, App.tsx Auth Stack handles it
           }}>
             <Text style={styles.logoutButtonText}>Log Out</Text>
           </TouchableOpacity>

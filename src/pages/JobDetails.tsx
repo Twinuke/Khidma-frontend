@@ -1,18 +1,83 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, SafeAreaView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Job } from '../types/job';
-import { BidForm } from '../../components/BidForm';
+import { BidForm } from '../components/BidForm';
+import { useUser } from '../context/UserContext';
+import api from '../config/api';
 
 export default function JobDetails() {
   const route = useRoute<any>();
-  const navigation = useNavigation();
-  const job = route.params?.jobData as Job;
+  const navigation = useNavigation<any>();
+  const { user } = useUser();
+  
+  const { jobId, hasPlacedBid: paramHasBid } = route.params || {};
+  const initialJobData = route.params?.jobData as Job;
+
+  const [job, setJob] = useState<Job | null>(initialJobData || null);
+  const [loading, setLoading] = useState(!initialJobData);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Fallback if data is missing
-  if (!job) return <View style={styles.container}><Text>Error loading job</Text></View>;
+  const hasPlacedBid = paramHasBid || job?.hasPlacedBid || false;
+
+  useEffect(() => {
+    if (!job && jobId) {
+      fetchJobDetails();
+    }
+  }, [jobId]);
+
+  const fetchJobDetails = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/Jobs/${jobId}`);
+      setJob(response.data);
+    } catch (error) {
+      console.log('Error fetching job details:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartChat = async () => {
+    if (!user || !job) return;
+    try {
+      const response = await api.post('/Chat/open', {
+        user1Id: user.userId,
+        user2Id: job.client?.userId,
+        jobId: job.jobId
+      });
+      
+      const conversation = response.data;
+      
+      navigation.navigate('ChatScreen', {
+        conversationId: conversation.conversationId,
+        otherUser: job.client
+      });
+    } catch (e) {
+      console.log('Chat Error:', e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
+
+  if (!job) {
+    return (
+      <View style={styles.centerContainer}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorText}>Job not found or deleted.</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -34,6 +99,13 @@ export default function JobDetails() {
             <Text style={styles.budgetAmount}>${job.budget}</Text>
           </View>
         </View>
+
+        {hasPlacedBid && (
+          <View style={styles.bidPlacedBanner}>
+            <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+            <Text style={styles.bidPlacedText}>You have already placed a bid on this job.</Text>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Description</Text>
@@ -65,30 +137,61 @@ export default function JobDetails() {
               </Text>
             </View>
             <View>
-              <Text style={styles.clientName}>{job.client?.fullName}</Text>
+              <Text style={styles.clientName}>{job.client?.fullName || "Client"}</Text>
               <Text style={styles.clientMeta}>Verified Client</Text>
             </View>
           </View>
         </View>
       </ScrollView>
 
+      {/* Footer Action */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.bidBtn} onPress={() => setModalVisible(true)}>
-          <Text style={styles.bidBtnText}>Apply Now</Text>
-        </TouchableOpacity>
+        {/* If User is NOT Owner, show buttons */}
+        {user?.userId !== job.client?.userId ? (
+          <View style={{flexDirection: 'row', gap: 10}}>
+            
+            {/* Chat Button (Always Visible for Non-Owners) */}
+            <TouchableOpacity 
+              style={[styles.bidBtn, {flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#2563EB'}]} 
+              onPress={handleStartChat}
+            >
+                <Text style={[styles.bidBtnText, {color: '#2563EB'}]}>Chat</Text>
+            </TouchableOpacity>
+
+            {/* Apply Button (Visible only if NO BID placed) */}
+            {!hasPlacedBid ? (
+              <TouchableOpacity style={[styles.bidBtn, {flex: 2}]} onPress={() => setModalVisible(true)}>
+                  <Text style={styles.bidBtnText}>Apply Now</Text>
+              </TouchableOpacity>
+            ) : (
+              // Disabled Button (Visible if BID placed)
+              <TouchableOpacity style={[styles.bidBtn, styles.bidBtnDisabled, {flex: 2}]} disabled={true}>
+                <Text style={[styles.bidBtnText, styles.bidBtnTextDisabled]}>Bid Placed</Text>
+              </TouchableOpacity>
+            )}
+
+          </View>
+        ) : (
+          <Text style={styles.ownJobText}>You posted this job</Text>
+        )}
       </View>
 
-      <Modal visible={modalVisible} transparent animationType="slide">
+      {/* Bid Modal */}
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <BidForm 
-            jobId={job.jobId} 
-            freelancerId={1} // TODO: Replace with dynamic user ID from Auth context
-            onCancel={() => setModalVisible(false)}
-            onSuccess={() => {
-              setModalVisible(false);
-              navigation.goBack();
-            }}
-          />
+          {user ? (
+            <BidForm 
+              jobId={job.jobId} 
+              freelancerId={user.userId} 
+              onCancel={() => setModalVisible(false)}
+              onSuccess={() => {
+                setModalVisible(false);
+                navigation.goBack();
+              }}
+            />
+          ) : (
+            <ActivityIndicator size="large" color="#FFF" />
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -97,6 +200,7 @@ export default function JobDetails() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
   backBtn: { padding: 8 },
   headerTitle: { fontSize: 18, fontWeight: '600' },
@@ -107,6 +211,8 @@ const styles = StyleSheet.create({
   budgetRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', padding: 12, borderRadius: 12, alignSelf: 'flex-start' },
   budgetLabel: { marginRight: 8, color: '#64748B' },
   budgetAmount: { fontSize: 18, fontWeight: '700', color: '#2563EB' },
+  bidPlacedBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', padding: 12, borderRadius: 8, marginBottom: 20 },
+  bidPlacedText: { color: '#15803D', fontWeight: '600', marginLeft: 8 },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#0F172A', marginBottom: 12 },
   descText: { fontSize: 15, lineHeight: 24, color: '#334155' },
@@ -119,6 +225,12 @@ const styles = StyleSheet.create({
   clientMeta: { color: '#64748B', fontSize: 13 },
   footer: { padding: 20, borderTopWidth: 1, borderColor: '#E2E8F0' },
   bidBtn: { backgroundColor: '#2563EB', padding: 16, borderRadius: 16, alignItems: 'center' },
+  bidBtnDisabled: { backgroundColor: '#E2E8F0' },
   bidBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  bidBtnTextDisabled: { color: '#94A3B8' },
+  ownJobText: { textAlign: 'center', color: '#64748B', fontStyle: 'italic' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  errorText: { fontSize: 16, color: '#64748B', marginTop: 12, marginBottom: 20 },
+  backButton: { backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  backButtonText: { color: '#FFF', fontWeight: '600' },
 });

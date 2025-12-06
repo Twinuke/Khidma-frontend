@@ -26,7 +26,8 @@ import Messages from './src/pages/Messages';
 import Settings from './src/pages/Settings';
 import Notifications from './src/pages/Notifications';
 import Search from './src/pages/Search';
-
+import { ChatProvider } from './src/context/ChatContext';
+import ChatScreen from './src/pages/ChatScreen';
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
   EmailVerification: { email: string; purpose?: 'register' | 'login' };
@@ -72,6 +73,7 @@ const AppNavigator = () => (
     <AppStack.Screen name="Settings" component={Settings} />
     <AppStack.Screen name="Notifications" component={Notifications} />
     <AppStack.Screen name="Search" component={Search} />
+    <AppStack.Screen name="ChatScreen" component={ChatScreen} />
   </AppStack.Navigator>
 );
 
@@ -109,7 +111,9 @@ SplashScreen.preventAutoHideAsync();
 export default function App() {
   return (
     <UserProvider>
-      <NavigationWrapper />
+      <ChatProvider> 
+        <NavigationWrapper />
+      </ChatProvider>
     </UserProvider>
   );
 }
