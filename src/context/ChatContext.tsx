@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { HubConnection, HubConnectionBuilder } from '@microsoft/signalr';
-import api from '../config/api';
+import { HUB_URL } from '../config/api'; // ✅ Import from config
 
 interface ChatContextType {
   connection: HubConnection | null;
@@ -14,21 +14,21 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
 
   const connectToChat = async () => {
     try {
-      // Point to your backend Hub URL
-      // Ensure 'API_BASE_URL' in api.ts is the base (e.g. http://192.168.1.103:5257)
-      // The Hub is at /chatHub
-      const hubUrl = "http://192.168.1.103:5257/chatHub"; // Replace with dynamic IP if needed
+      // Prevent multiple connections
+      if (connection) return;
+
+      console.log("🔌 Connecting to Chat Hub at:", HUB_URL);
 
       const newConnection = new HubConnectionBuilder()
-        .withUrl(hubUrl)
+        .withUrl(HUB_URL) // ✅ Uses the dynamic URL from api.ts
         .withAutomaticReconnect()
         .build();
 
       await newConnection.start();
-      console.log("SignalR Connected!");
+      console.log("✅ SignalR Connected!");
       setConnection(newConnection);
     } catch (e) {
-      console.log("SignalR Connection Error", e);
+      console.log("❌ SignalR Connection Error:", e);
     }
   };
 

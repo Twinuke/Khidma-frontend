@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   StatusBar,
   Platform,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,7 +20,6 @@ import api from '../config/api';
 import { JobCard } from '../../components/JobCard';
 import { Job } from '../types/job';
 import { useUser } from '../context/UserContext';
-import { ScreenWrapper } from '../../components/ScreenWrapper';
 
 const COLORS = {
   bg: '#F1F5F9',
@@ -40,7 +42,7 @@ export default function Jobs() {
   const [page, setPage] = useState(1);
   const [activeFilter, setActiveFilter] = useState('All');
 
-  // -- Reload jobs when screen comes into focus (e.g. after placing a bid) --
+  // -- Reload jobs when screen comes into focus --
   useFocusEffect(
     useCallback(() => {
       fetchJobs(true);
@@ -60,11 +62,10 @@ export default function Jobs() {
           category: activeFilter === 'All' ? undefined : activeFilter,
           page: currentPage,
           pageSize: 10,
-          currentUserId: user?.userId // ✅ CRITICAL: Sends ID to check for "Bid Placed"
+          currentUserId: user?.userId
         }
       });
       
-      // Handle both paginated response { data: [], totalCount: ... } and array response
       const data = response.data.data || response.data || []; 
 
       if (isRefresh) {
@@ -109,6 +110,7 @@ export default function Jobs() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
             />
             <TouchableOpacity style={styles.filterBtn} onPress={() => fetchJobs(true)}>
                <Ionicons name="search" size={20} color="#FFF" />
@@ -138,42 +140,54 @@ export default function Jobs() {
   );
 
   return (
-    // scrollable={false} because FlatList handles scrolling
-    <ScreenWrapper style={styles.container} scrollable={false}>
-      <StatusBar barStyle="light-content" />
-      {renderHeader()}
+    // ✅ FIX: Replaced ScreenWrapper with View + KeyboardAvoidingView
+    // This removes the SafeAreaView that was pushing the header down.
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+        style={{ flex: 1 }}
+      >
+        {renderHeader()}
 
-      <FlatList
-        data={jobs}
-        renderItem={({ item }) => <JobCard job={item} onPress={openJobDetails} />}
-        keyExtractor={(item) => item.jobId.toString()}
-        contentContainerStyle={styles.listContent}
-        onRefresh={() => {
-          setRefreshing(true);
-          fetchJobs(true);
-        }}
-        refreshing={refreshing}
-        ListEmptyComponent={
-          !loading ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyText}>No jobs found matching your search.</Text>
-            </View>
-          ) : null
-        }
-      />
-    </ScreenWrapper>
+        <FlatList
+          data={jobs}
+          renderItem={({ item }) => <JobCard job={item} onPress={openJobDetails} />}
+          keyExtractor={(item) => item.jobId.toString()}
+          contentContainerStyle={styles.listContent}
+          onRefresh={() => {
+            setRefreshing(true);
+            fetchJobs(true);
+          }}
+          refreshing={refreshing}
+          keyboardDismissMode="on-drag" // Dismiss keyboard when scrolling
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="briefcase-outline" size={48} color="#CBD5E1" />
+                <Text style={styles.emptyText}>No jobs found matching your search.</Text>
+              </View>
+            ) : null
+          }
+        />
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   headerGradient: {
-    paddingTop: Platform.OS === 'android' ? 40 : 0,
+    // ✅ FIX: Manually add top padding for Status Bar (matches Home screen)
+    paddingTop: Platform.OS === 'android' ? 40 : 50,
     paddingBottom: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, elevation: 5,
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.2, 
+    elevation: 5,
   },
   headerContent: { paddingHorizontal: 20 },
   headerTitle: { fontSize: 24, fontWeight: '700', color: '#FFF', marginBottom: 16 },

@@ -1,8 +1,8 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import api, { setAuthToken } from '../config/api';
+import api from '../config/api';
 
-// 1. Define the User Shape based on your backend model
+// ✅ User Definition
 export interface User {
   userId: number;
   fullName: string;
@@ -12,8 +12,7 @@ export interface User {
   profileImageUrl?: string;
   city?: string;
   userType?: number;
-  balance?: number; 
-  // ✅ FIX: Added these missing fields so Profile.tsx can use them
+  balance?: number;
   latitude?: number;
   longitude?: number;
 }
@@ -35,7 +34,6 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 2. Load User on App Start
   useEffect(() => {
     loadUserFromStorage();
   }, []);
@@ -46,15 +44,12 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       const userId = await AsyncStorage.getItem('userId');
       
       if (token && userId) {
-        // Set token first
-        await setAuthToken(token);
-        
-        // Fetch fresh data from backend
+        // We don't need setAuthToken here because the interceptor in api.ts handles it
         const response = await api.get(`/Users/${userId}`);
         setUser(response.data);
       }
     } catch (error) {
-      console.log('Failed to load user session:', error);
+      console.log('Session Load Error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -65,10 +60,10 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       const response = await api.post('/auth/login', { email, password });
       const { token, user } = response.data;
       
+      // ✅ Save to Storage (Interceptor will pick it up)
       await AsyncStorage.setItem('authToken', token);
       await AsyncStorage.setItem('userId', user.userId.toString());
-      await setAuthToken(token);
-
+      
       setUser(user);
     } catch (error) {
       throw error;
@@ -81,9 +76,10 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       
       if (response.data.token && response.data.user) {
         const { token, user } = response.data;
+        
         await AsyncStorage.setItem('authToken', token);
         await AsyncStorage.setItem('userId', user.userId.toString());
-        await setAuthToken(token);
+        
         setUser(user);
       }
     } catch (error) {
@@ -94,17 +90,15 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     await AsyncStorage.removeItem('authToken');
     await AsyncStorage.removeItem('userId');
-    await setAuthToken(null); 
-    setUser(null);
+    setUser(null); // This triggers App.tsx to switch to Auth Stack automatically
   };
 
-  // Updates backend AND local state
   const updateUser = async (updatedData: Partial<User>) => {
     if (!user) return;
     try {
       const payload = { ...user, ...updatedData };
       await api.put(`/Users/${user.userId}`, payload);
-      setUser(payload); // Update global state immediately
+      setUser(payload);
     } catch (error) {
       throw error;
     }
