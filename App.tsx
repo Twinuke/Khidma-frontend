@@ -2,34 +2,39 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback } from 'react'; // Added useCallback
-import { View } from 'react-native'; // Added View
+import React, { useCallback } from 'react';
+import { View } from 'react-native';
 
-import SplashScreenComponent from './src/components/SplashScreen';
 import { UserProvider, useUser } from './src/context/UserContext';
+import { ChatProvider } from './src/context/ChatContext';
+import SplashScreenComponent from './src/components/SplashScreen';
 
 // --- Auth Screens ---
-import EmailVerification from './src/pages/EmailVerification';
 import Login from './src/pages/Login';
 import PhoneNumberEntry from './src/pages/PhoneNumberEntry';
+import EmailVerification from './src/pages/EmailVerification';
 import RegistrationForm from './src/pages/RegistrationForm';
 
 // --- App Screens ---
-import { ChatProvider } from './src/context/ChatContext';
-import Bids from './src/pages/Bids';
-import ChatScreen from './src/pages/ChatScreen';
-import CreateJob from './src/pages/CreateJob';
 import Home from './src/pages/Home';
-import JobBids from './src/pages/JobBids';
-import JobDetails from './src/pages/JobDetails';
-import Jobs from './src/pages/Jobs';
-import Messages from './src/pages/Messages';
-import MyJobs from './src/pages/MyJobs';
-import Notifications from './src/pages/Notifications';
 import Profile from './src/pages/Profile';
-import Search from './src/pages/Search';
+import Jobs from './src/pages/Jobs';
+import JobDetails from './src/pages/JobDetails';
+import CreateJob from './src/pages/CreateJob';
+import MyJobs from './src/pages/MyJobs'; // Kept for legacy/freelancer usage if needed
+import Bids from './src/pages/Bids';
+import Messages from './src/pages/Messages';
 import Settings from './src/pages/Settings';
+import Notifications from './src/pages/Notifications';
+import Search from './src/pages/Search';
+import ChatScreen from './src/pages/ChatScreen';
 
+// --- New Feature Screens (Social & Client Dashboard) ---
+import SocialPage from './src/pages/SocialPage';
+import ClientMyJobs from './src/pages/ClientMyJobs';
+import ClientJobDetails from './src/pages/ClientJobDetails';
+
+// Define the param list for TypeScript safety (Optional but good practice)
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
   EmailVerification: { email: string; purpose?: 'register' | 'login' };
@@ -38,7 +43,7 @@ export type RootStackParamList = {
   Home: undefined;
   Profile: undefined;
   Jobs: undefined;
-  JobDetails: { jobId: number };
+  JobDetails: { jobId: number; jobData?: any; hasPlacedBid?: boolean };
   CreateJob: undefined;
   MyJobs: undefined;
   Bids: undefined;
@@ -46,13 +51,16 @@ export type RootStackParamList = {
   Settings: undefined;
   Notifications: undefined;
   Search: undefined;
-  JobBids: { jobId: number; jobTitle?: string };
+  ChatScreen: { conversationId: number; otherUser: any };
+  SocialPage: undefined;
+  ClientMyJobs: undefined;
+  ClientJobDetails: { jobId: number };
 };
 
-const AuthStack = createNativeStackNavigator();
-const AppStack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator<RootStackParamList>();
+const AppStack = createNativeStackNavigator<RootStackParamList>();
 
-// 1. Define Auth Flow
+// 1. Define Auth Flow (Public)
 const AuthNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
     <AuthStack.Screen name="Login" component={Login} />
@@ -65,7 +73,10 @@ const AuthNavigator = () => (
 // 2. Define App Flow (Protected)
 const AppNavigator = () => (
   <AppStack.Navigator screenOptions={{ headerShown: false }}>
+    {/* Main Tabs / Dashboard */}
     <AppStack.Screen name="Home" component={Home} />
+    
+    {/* Core Features */}
     <AppStack.Screen name="Profile" component={Profile} />
     <AppStack.Screen name="Jobs" component={Jobs} />
     <AppStack.Screen name="JobDetails" component={JobDetails} />
@@ -73,11 +84,15 @@ const AppNavigator = () => (
     <AppStack.Screen name="MyJobs" component={MyJobs} />
     <AppStack.Screen name="Bids" component={Bids} />
     <AppStack.Screen name="Messages" component={Messages} />
-    <AppStack.Screen name="Settings" component={Settings} />
-    <AppStack.Screen name="Notifications" component={Notifications} />
-    <AppStack.Screen name="Search" component={Search} />
     <AppStack.Screen name="ChatScreen" component={ChatScreen} />
-    <AppStack.Screen name="JobBids" component={JobBids} />
+    <AppStack.Screen name="Notifications" component={Notifications} />
+    <AppStack.Screen name="Settings" component={Settings} />
+    <AppStack.Screen name="Search" component={Search} />
+
+    {/* ✅ NEW Screens */}
+    <AppStack.Screen name="SocialPage" component={SocialPage} />
+    <AppStack.Screen name="ClientMyJobs" component={ClientMyJobs} />
+    <AppStack.Screen name="ClientJobDetails" component={ClientJobDetails} />
   </AppStack.Navigator>
 );
 
@@ -85,21 +100,18 @@ const AppNavigator = () => (
 const NavigationWrapper = () => {
   const { isLoading, isAuthenticated } = useUser();
 
-  // --- FIX: Hide Native Splash Screen when loading is done ---
+  // Hide the native splash screen once we know the auth state
   const onLayoutRootView = useCallback(async () => {
     if (!isLoading) {
-      // This tells the native app "We are ready, hide the logo"
       await SplashScreen.hideAsync();
     }
   }, [isLoading]);
 
   if (isLoading) {
-    // While checking token, show your custom splash component
     return <SplashScreenComponent onFinish={() => {}} />;
   }
 
   return (
-    // We attach onLayout here to ensure we hide the splash only after UI is ready to render
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       <NavigationContainer>
         <StatusBar style="auto" />
@@ -115,7 +127,7 @@ SplashScreen.preventAutoHideAsync();
 export default function App() {
   return (
     <UserProvider>
-      <ChatProvider> 
+      <ChatProvider>
         <NavigationWrapper />
       </ChatProvider>
     </UserProvider>
