@@ -21,7 +21,7 @@ import Profile from './src/pages/Profile';
 import Jobs from './src/pages/Jobs';
 import JobDetails from './src/pages/JobDetails';
 import CreateJob from './src/pages/CreateJob';
-import MyJobs from './src/pages/MyJobs'; // Kept for legacy/freelancer usage if needed
+import MyJobs from './src/pages/MyJobs'; 
 import Bids from './src/pages/Bids';
 import Messages from './src/pages/Messages';
 import Settings from './src/pages/Settings';
@@ -33,8 +33,8 @@ import ChatScreen from './src/pages/ChatScreen';
 import SocialPage from './src/pages/SocialPage';
 import ClientMyJobs from './src/pages/ClientMyJobs';
 import ClientJobDetails from './src/pages/ClientJobDetails';
-
-// Define the param list for TypeScript safety (Optional but good practice)
+import Connections from './src/pages/Connections';
+// Define the param list
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
   EmailVerification: { email: string; purpose?: 'register' | 'login' };
@@ -55,6 +55,7 @@ export type RootStackParamList = {
   SocialPage: undefined;
   ClientMyJobs: undefined;
   ClientJobDetails: { jobId: number };
+  Connections: undefined; // ✅ Route Added
 };
 
 const AuthStack = createNativeStackNavigator<RootStackParamList>();
@@ -93,6 +94,7 @@ const AppNavigator = () => (
     <AppStack.Screen name="SocialPage" component={SocialPage} />
     <AppStack.Screen name="ClientMyJobs" component={ClientMyJobs} />
     <AppStack.Screen name="ClientJobDetails" component={ClientJobDetails} />
+    <AppStack.Screen name="Connections" component={Connections} />
   </AppStack.Navigator>
 );
 
@@ -100,7 +102,6 @@ const AppNavigator = () => (
 const NavigationWrapper = () => {
   const { isLoading, isAuthenticated } = useUser();
 
-  // Hide the native splash screen once we know the auth state
   const onLayoutRootView = useCallback(async () => {
     if (!isLoading) {
       await SplashScreen.hideAsync();
@@ -121,7 +122,6 @@ const NavigationWrapper = () => {
   );
 };
 
-// Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -8,29 +8,29 @@ import {
   StyleSheet,
   Text,
   View,
+  TouchableOpacity // ✅ Import TouchableOpacity
 } from "react-native";
 import { ScreenWrapper } from "../../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
-// Matches your backend model exactly
 interface Notification {
   notificationId: number;
   userId: number;
   title: string;
   message: string;
-  type: number; // 0=General, 1=BidPlaced, 2=BidAccepted, etc.
+  type: number; 
   isRead: boolean;
   createdAt: string;
 }
 
 export default function Notifications() {
   const { user } = useUser();
+  const navigation = useNavigation<any>(); // ✅ Hook for navigation
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch notifications whenever the screen comes into focus
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
@@ -41,7 +41,6 @@ export default function Notifications() {
     if (!user?.userId) return;
 
     try {
-      // Calls your existing endpoint: GET /api/Notifications/user/{userId}
       const response = await api.get(`/Notifications/user/${user.userId}`);
       setNotifications(response.data);
     } catch (error) {
@@ -57,21 +56,31 @@ export default function Notifications() {
     fetchNotifications();
   };
 
+  // ✅ Handle Notification Click
+  const handlePress = (item: Notification) => {
+    // Type 5 = ConnectionRequest (matches backend enum)
+    if (item.type === 5) {
+        navigation.navigate('Connections'); // Navigate to Connections page
+    }
+    // You can add more types here (e.g., if type === 1, go to JobDetails)
+  };
+
   const getIcon = (type: number) => {
     switch (type) {
-      case 1: // BidPlaced
-        return <Ionicons name="pricetag" size={24} color="#3B82F6" />;
-      case 2: // BidAccepted
-        return <Ionicons name="checkmark-circle" size={24} color="#10B981" />;
-      case 3: // Payment
-        return <Ionicons name="cash" size={24} color="#F59E0B" />;
-      default:
-        return <Ionicons name="notifications" size={24} color="#6B7280" />;
+      case 1: return <Ionicons name="pricetag" size={24} color="#3B82F6" />;
+      case 2: return <Ionicons name="checkmark-circle" size={24} color="#10B981" />;
+      case 3: return <Ionicons name="cash" size={24} color="#F59E0B" />;
+      case 5: return <Ionicons name="person-add" size={24} color="#8B5CF6" />; // ✅ Icon for Friend Request
+      default: return <Ionicons name="notifications" size={24} color="#6B7280" />;
     }
   };
 
   const renderItem = ({ item }: { item: Notification }) => (
-    <View style={[styles.card, !item.isRead && styles.unreadCard]}>
+    <TouchableOpacity 
+      style={[styles.card, !item.isRead && styles.unreadCard]} 
+      onPress={() => handlePress(item)} // ✅ Make card clickable
+      activeOpacity={0.7}
+    >
       <View style={styles.iconContainer}>{getIcon(item.type)}</View>
       <View style={styles.textContainer}>
         <Text style={styles.cardTitle}>{item.title}</Text>
@@ -80,37 +89,32 @@ export default function Notifications() {
           {new Date(item.createdAt).toLocaleString()}
         </Text>
       </View>
-    </View>
+      {/* Small arrow to indicate it's clickable */}
+      <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+    </TouchableOpacity>
   );
 
   return (
     <ScreenWrapper style={styles.container} scrollable={false}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{marginRight: 10}}>
+           <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
       </View>
 
       {loading ? (
-        <ActivityIndicator
-          size="large"
-          color="#2563EB"
-          style={{ marginTop: 20 }}
-        />
+        <ActivityIndicator size="large" color="#2563EB" style={{ marginTop: 20 }} />
       ) : (
         <FlatList
           data={notifications}
           keyExtractor={(item) => item.notificationId.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons
-                name="notifications-off-outline"
-                size={48}
-                color="#CBD5E1"
-              />
+              <Ionicons name="notifications-off-outline" size={48} color="#CBD5E1" />
               <Text style={styles.emptyText}>No notifications yet.</Text>
             </View>
           }
@@ -123,6 +127,8 @@ export default function Notifications() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 20,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
@@ -132,6 +138,7 @@ const styles = StyleSheet.create({
   list: { padding: 16 },
   card: {
     flexDirection: "row",
+    alignItems: 'center',
     backgroundColor: "#FFF",
     padding: 16,
     borderRadius: 12,
@@ -149,24 +156,9 @@ const styles = StyleSheet.create({
   },
   iconContainer: { marginRight: 12, justifyContent: "center" },
   textContainer: { flex: 1 },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#0F172A",
-    marginBottom: 4,
-  },
-  cardMessage: {
-    fontSize: 14,
-    color: "#475569",
-    marginBottom: 6,
-    lineHeight: 20,
-  },
+  cardTitle: { fontSize: 16, fontWeight: "600", color: "#0F172A", marginBottom: 4 },
+  cardMessage: { fontSize: 14, color: "#475569", marginBottom: 6, lineHeight: 20 },
   cardDate: { fontSize: 12, color: "#94A3B8" },
   emptyContainer: { alignItems: "center", marginTop: 60 },
-  emptyText: {
-    textAlign: "center",
-    color: "#64748B",
-    marginTop: 12,
-    fontSize: 16,
-  },
+  emptyText: { textAlign: "center", color: "#64748B", marginTop: 12, fontSize: 16 },
 });

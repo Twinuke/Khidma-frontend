@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform,
-  Animated, PanResponder, Dimensions, StatusBar, Image,
+  Animated, PanResponder, StatusBar, Image, Alert,
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -10,11 +10,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useUser } from '../context/UserContext';
 import api from '../config/api';
 import { RootStackParamList } from '../../App';
+import Footer from '../components/Footer';
 
 const HEADER_MIN_HEIGHT = Platform.OS === 'ios' ? 100 : 90;
 const HEADER_MAX_HEIGHT = 280;
-const BOTTOM_BAR_HEIGHT = Platform.OS === 'ios' ? 85 : 70;
-const FAB_SIZE = 56;
 
 const COLORS = {
   bg: '#F1F5F9',
@@ -48,6 +47,10 @@ export default function Home() {
       const response = await api.get(`/Notifications/user/${user.userId}`);
       setRecentActivity(response.data.slice(0, 3));
     } catch (e) { console.log(e); }
+  };
+
+  const handleWithdraw = () => {
+    Alert.alert("Withdraw", "Withdrawal feature is coming soon!");
   };
 
   const panResponder = useRef(
@@ -93,7 +96,6 @@ export default function Home() {
       <Animated.View style={[styles.headerContainer, { height: headerHeight }]} {...panResponder.panHandlers}>
         <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.headerGradient}>
           <View style={styles.compactRow}>
-            {/* Clickable Avatar to Profile */}
             <TouchableOpacity style={styles.userInfo} onPress={() => navigation.navigate('Profile')}>
               <View style={styles.avatarContainer}>
                 {user?.profileImageUrl ? (
@@ -125,7 +127,6 @@ export default function Home() {
               <View style={styles.statItem}><Text style={styles.statLabel}>Rating</Text><Text style={styles.statValue}>4.9 ★</Text></View>
             </View>
             
-            {/* ✅ HERE IT IS: Edit Profile in Header */}
             <TouchableOpacity style={styles.expButton} onPress={() => navigation.navigate('Profile')}>
               <Ionicons name="person-circle-outline" size={20} color="#FFF" />
               <Text style={styles.expButtonText}>Edit Profile</Text>
@@ -144,6 +145,18 @@ export default function Home() {
       {/* CONTENT */}
       <ScrollView style={styles.scrollView} contentContainerStyle={[styles.scrollContent, { paddingTop: HEADER_MIN_HEIGHT + 20 }]}>
         
+        {/* ✅ BALANCE CARD RESTORED HERE */}
+        <LinearGradient colors={['#2563EB', '#1D4ED8']} style={styles.balanceCard} start={{x:0, y:0}} end={{x:1, y:1}}>
+          <View>
+            <Text style={styles.balanceLabel}>Total Balance</Text>
+            <Text style={styles.balanceAmount}>${user?.balance?.toFixed(2) || '0.00'}</Text>
+          </View>
+          <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw}>
+            <Text style={styles.withdrawText}>Withdraw</Text>
+            <Ionicons name="arrow-forward-circle" size={20} color={COLORS.primary} />
+          </TouchableOpacity>
+        </LinearGradient>
+
         {/* Overview Grid */}
         <Text style={styles.sectionTitle}>Overview</Text>
         <View style={styles.gridContainer}>
@@ -168,7 +181,6 @@ export default function Home() {
             <Text style={styles.gridLabel}>Chat</Text>
           </TouchableOpacity>
 
-          {/* ✅ REPLACED "Profile" with "Bids" (or Settings) to remove duplicate */}
           <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate('Bids' as any)}>
             <View style={[styles.gridIcon, { backgroundColor: '#F3E8FF' }]}>
               <Ionicons name="document-text" size={22} color="#9333EA" />
@@ -191,18 +203,13 @@ export default function Home() {
             </View>
           </View>
         ))}
-        <View style={{height: 100}}/>
+        {/* Extra space for the floating footer */}
+        <View style={{height: 80}}/>
       </ScrollView>
 
-      {/* BOTTOM BAR */}
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomIcons}>
-          <TouchableOpacity onPress={() => {}}><Ionicons name="home" size={24} color={COLORS.primary} /></TouchableOpacity>
-          <TouchableOpacity onPress={handleJobsPress}><Ionicons name="list" size={24} color="#94A3B8" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('SocialPage')}><Ionicons name="people" size={24} color="#94A3B8" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Messages')}><Ionicons name="chatbubble-ellipses" size={24} color="#94A3B8" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')}><Ionicons name="person" size={24} color="#94A3B8" /></TouchableOpacity>
-        </View>
+      {/* FOOTER COMPONENT */}
+      <View style={styles.footerWrapper}>
+        <Footer />
       </View>
 
       {/* FAB (Client Only) */}
@@ -228,7 +235,6 @@ const styles = StyleSheet.create({
   onlineDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.success, borderWidth: 1.5, borderColor: '#1E293B' },
   greetingText: { color: '#FFF', fontWeight: 'bold' },
   statusText: { color: COLORS.secondaryText, fontSize: 11 },
-  headerIcons: { flexDirection: 'row' },
   iconButton: { padding: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 18 },
   notifBadge: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, backgroundColor: 'red', borderRadius: 4 },
   expandedContent: { marginTop: 10 },
@@ -238,20 +244,42 @@ const styles = StyleSheet.create({
   statLabel: { color: '#94A3B8', fontSize: 10 },
   statValue: { color: '#FFF', fontWeight: 'bold' },
   verticalLine: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
-  expandedActions: { alignItems: 'center' },
   expButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, marginBottom: 5 },
   logoutBtn: { backgroundColor: 'rgba(239, 68, 68, 0.2)' },
   expButtonText: { color: '#FFF', marginLeft: 5 },
   logoutText: { color: '#FCA5A5' },
-  dragHandleContainer: { alignItems: 'center', paddingBottom: 5 },
   dragHandle: {  alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 6, height: 24  },
+  
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
-  balanceCard: { borderRadius: 16, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  balanceLabel: { color: '#BFDBFE', fontSize: 12 },
-  balanceAmount: { color: '#FFF', fontSize: 24, fontWeight: 'bold' },
-  withdrawBtn: { backgroundColor: '#FFF', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 15, flexDirection: 'row', alignItems: 'center' },
-  withdrawText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 12, marginRight: 5 },
+  
+  // ✅ BALANCE CARD STYLES
+  balanceCard: { 
+    borderRadius: 20, 
+    padding: 24, 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 24,
+    shadowColor: "#2563EB",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  balanceLabel: { color: '#BFDBFE', fontSize: 13, fontWeight: '500', marginBottom: 4 },
+  balanceAmount: { color: '#FFF', fontSize: 28, fontWeight: '800', letterSpacing: 0.5 },
+  withdrawBtn: { 
+    backgroundColor: '#FFF', 
+    paddingVertical: 10, 
+    paddingHorizontal: 16, 
+    borderRadius: 14, 
+    flexDirection: 'row', 
+    alignItems: 'center',
+    gap: 6
+  },
+  withdrawText: { color: COLORS.primary, fontWeight: '700', fontSize: 13 },
+
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.dark, marginBottom: 10 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
   gridItem: { width: '23%', alignItems: 'center' },
@@ -262,9 +290,8 @@ const styles = StyleSheet.create({
   activityItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 15, borderRadius: 12, marginBottom: 10 },
   actTitle: { fontWeight: 'bold', color: COLORS.dark },
   actDate: { color: '#94A3B8', fontSize: 12 },
-  bottomBar: { position: 'absolute', bottom: 0, width: '100%', height: BOTTOM_BAR_HEIGHT, backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, flexDirection: 'row', justifyContent: 'center', elevation: 20 },
-  bottomIcons: { flexDirection: 'row', width: '90%', justifyContent: 'space-between', paddingTop: 15 },
-  navItem: { padding: 5 },
+
+  footerWrapper: { position: 'absolute', bottom: 0, left: 0, right: 0 },
   floatingFab: { position: 'absolute', bottom: 100, right: 20, shadowColor: COLORS.primary, shadowOpacity: 0.4, shadowRadius: 10, elevation: 10 },
   fabGradient: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFF' },
 });

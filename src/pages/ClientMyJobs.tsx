@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
-import { ScreenWrapper } from "../../components/ScreenWrapper";
+import { 
+  View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, 
+  RefreshControl, StatusBar 
+} from 'react-native';
 import { useUser } from '../context/UserContext';
 import api from '../config/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,19 +14,18 @@ export default function ClientMyJobs() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Filter State: 'OPEN', 'CLOSED', or 'ALL'
+  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('OPEN');
 
-  // ✅ FIX: Auto-refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      if (user?.userId) {
-        fetchMyJobs();
-      }
+      if (user?.userId) fetchMyJobs();
     }, [user?.userId])
   );
 
   const fetchMyJobs = async () => {
     try {
-      // Calls the new backend endpoint we just added
       const res = await api.get(`/Jobs/client/${user?.userId}`);
       setJobs(res.data);
     } catch (e) {
@@ -35,77 +36,137 @@ export default function ClientMyJobs() {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity 
-      style={styles.card} 
-      onPress={() => navigation.navigate('ClientJobDetails', { jobId: item.jobId })}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>{item.title}</Text>
-        <View style={[styles.status, { backgroundColor: item.status === 0 ? '#DCFCE7' : '#F1F5F9' }]}>
-          <Text style={{ fontSize: 10, fontWeight: '700', color: item.status === 0 ? '#16A34A' : '#64748B' }}>
-            {item.status === 0 ? 'OPEN' : 'CLOSED'}
-          </Text>
+  // Filter Logic
+  const filteredJobs = jobs.filter((job: any) => {
+    if (filter === 'ALL') return true;
+    if (filter === 'OPEN') return job.status === 0;
+    if (filter === 'CLOSED') return job.status !== 0;
+    return true;
+  });
+
+  const renderJobCard = ({ item }: { item: any }) => {
+    const isOpen = item.status === 0;
+    return (
+      <TouchableOpacity 
+        style={styles.card} 
+        activeOpacity={0.9}
+        onPress={() => navigation.navigate('ClientJobDetails', { jobId: item.jobId })}
+      >
+        <View style={styles.cardTop}>
+          <View style={styles.titleRow}>
+            <Text style={styles.jobTitle} numberOfLines={1}>{item.title}</Text>
+            <View style={[styles.statusBadge, isOpen ? styles.statusOpen : styles.statusClosed]}>
+              <Text style={[styles.statusText, isOpen ? styles.textOpen : styles.textClosed]}>
+                {isOpen ? 'ACTIVE' : 'CLOSED'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.dateText}>Posted {new Date(item.createdAt).toLocaleDateString()}</Text>
         </View>
-      </View>
-      
-      <View style={styles.statRow}>
-        <View style={styles.stat}>
-          <Text style={styles.val}>{item.bidsCount || 0}</Text>
-          <Text style={styles.label}>Bids</Text>
+
+        <View style={styles.divider} />
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Ionicons name="cash-outline" size={16} color="#64748B" />
+            <Text style={styles.statValue}>${item.budget}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Ionicons name="people-outline" size={16} color="#64748B" />
+            <Text style={styles.statValue}>{item.bidsCount} Proposals</Text>
+          </View>
         </View>
-        <View style={styles.stat}>
-          <Text style={styles.val}>${item.budget}</Text>
-          <Text style={styles.label}>Budget</Text>
-        </View>
-        <View style={styles.stat}>
-          <Text style={styles.val}>{new Date(item.createdAt).toLocaleDateString()}</Text>
-          <Text style={styles.label}>Posted</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <ScreenWrapper style={styles.container} scrollable={false}>
-      <View style={styles.topHeader}>
-        <Text style={styles.headerTitle}>My Jobs</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => navigation.navigate('CreateJob')}>
-          <Ionicons name="add" size={24} color="#FFF" />
+    <View style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+      
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>My Jobs</Text>
+          <Text style={styles.headerSubtitle}>Manage your listings</Text>
+        </View>
+        {/* Connections Shortcut */}
+        <TouchableOpacity onPress={() => navigation.navigate('Connections')} style={styles.iconBtn}>
+           <Ionicons name="people" size={24} color="#2563EB" />
         </TouchableOpacity>
       </View>
 
+      {/* Filter Tabs */}
+      <View style={styles.tabs}>
+        {['OPEN', 'CLOSED', 'ALL'].map((f) => (
+          <TouchableOpacity 
+            key={f} 
+            style={[styles.tab, filter === f && styles.activeTab]}
+            onPress={() => setFilter(f as any)}
+          >
+            <Text style={[styles.tabText, filter === f && styles.activeTabText]}>
+              {f === 'OPEN' ? 'Active' : f === 'CLOSED' ? 'Closed' : 'All'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {loading ? (
-        <ActivityIndicator size="large" color="#2563EB" style={{marginTop: 20}} />
+        <View style={styles.center}><ActivityIndicator size="large" color="#2563EB" /></View>
       ) : (
         <FlatList 
-          data={jobs}
-          renderItem={renderItem}
+          data={filteredJobs}
+          renderItem={renderJobCard}
           keyExtractor={(item: any) => item.jobId.toString()}
-          contentContainerStyle={{ padding: 16 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchMyJobs(); }} />}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchMyJobs(); }} />
+          }
           ListEmptyComponent={
-            <View style={{alignItems: 'center', marginTop: 50}}>
-              <Text style={{color: '#64748B'}}>No jobs posted yet.</Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No {filter.toLowerCase()} jobs found.</Text>
             </View>
           }
         />
       )}
-    </ScreenWrapper>
+
+      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('CreateJob')}>
+        <Ionicons name="add" size={28} color="#FFF" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#0F172A' },
-  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center' },
-  card: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 12, shadowOpacity: 0.05, elevation: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  title: { fontSize: 16, fontWeight: 'bold', color: '#0F172A' },
-  status: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderColor: '#F1F5F9', paddingTop: 12 },
-  stat: { alignItems: 'center' },
-  val: { fontWeight: '700', color: '#0F172A' },
-  label: { fontSize: 12, color: '#64748B' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20, backgroundColor: '#FFF' },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A' },
+  headerSubtitle: { fontSize: 14, color: '#64748B' },
+  iconBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+
+  tabs: { flexDirection: 'row', paddingHorizontal: 20, paddingBottom: 10, backgroundColor: '#FFF' },
+  tab: { marginRight: 15, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#F1F5F9' },
+  activeTab: { backgroundColor: '#2563EB' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  activeTabText: { color: '#FFF' },
+
+  listContent: { padding: 20, paddingBottom: 100 },
+  card: { backgroundColor: '#FFF', borderRadius: 16, marginBottom: 16, padding: 20, shadowOpacity: 0.05, elevation: 3 },
+  cardTop: { marginBottom: 16 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  jobTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1 },
+  dateText: { fontSize: 12, color: '#94A3B8' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statusOpen: { backgroundColor: '#DCFCE7' },
+  statusClosed: { backgroundColor: '#F1F5F9' },
+  statusText: { fontSize: 11, fontWeight: '700' },
+  textOpen: { color: '#16A34A' },
+  textClosed: { color: '#64748B' },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 16 },
+  statsRow: { flexDirection: 'row', gap: 24 },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statValue: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  emptyState: { alignItems: 'center', marginTop: 80 },
+  emptyText: { color: '#94A3B8' },
+  fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', elevation: 8 }
 });
