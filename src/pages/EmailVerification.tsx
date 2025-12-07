@@ -1,46 +1,46 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
-  Easing,
-  ScrollView,
-} from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { RootStackParamList } from '../../App';
-import api from '../config/api';
+  View,
+} from "react-native";
+import { RootStackParamList } from "../../App";
+import api from "../config/api";
 
 type EmailVerificationScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  'EmailVerification'
+  "EmailVerification"
 >;
 
 type EmailVerificationRouteProp = {
   key: string;
-  name: 'EmailVerification';
+  name: "EmailVerification";
   params: {
     email: string;
-    purpose?: 'register' | 'login';
+    purpose?: "register" | "login";
   };
 };
 
 export default function EmailVerification() {
   const navigation = useNavigation<EmailVerificationScreenNavigationProp>();
   const route = useRoute<EmailVerificationRouteProp>();
-  const { email, purpose = 'register' } = route.params || {};
+  const { email, purpose = "register" } = route.params || {};
 
-  const [otpCode, setOtpCode] = useState('');
+  const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
-  const [emailInput, setEmailInput] = useState(email || '');
+  const [emailInput, setEmailInput] = useState(email || "");
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -70,14 +70,14 @@ export default function EmailVerification() {
   }, []);
 
   const handleRequestOtp = async () => {
-    if (!emailInput || !emailInput.includes('@')) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (!emailInput || !emailInput.includes("@")) {
+      Alert.alert("Error", "Please enter a valid email address");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/request-email-otp', {
+      const response = await api.post("/auth/request-email-otp", {
         email: emailInput,
         purpose: purpose,
       });
@@ -85,15 +85,21 @@ export default function EmailVerification() {
       if (response.data.message) {
         // In development, show OTP in alert
         if (response.data.otp) {
-          Alert.alert('OTP Sent', `Your OTP code is: ${response.data.otp}\n\n(This is shown only in development)`);
+          Alert.alert(
+            "OTP Sent",
+            `Your OTP code is: ${response.data.otp}\n\n(This is shown only in development)`
+          );
         } else {
-          Alert.alert('OTP Sent', 'Please check your email for the verification code');
+          Alert.alert(
+            "OTP Sent",
+            "Please check your email for the verification code"
+          );
         }
       }
     } catch (error: any) {
       Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to send OTP. Please try again.'
+        "Error",
+        error.response?.data?.message || "Failed to send OTP. Please try again."
       );
     } finally {
       setLoading(false);
@@ -102,31 +108,34 @@ export default function EmailVerification() {
 
   const handleVerifyOtp = async () => {
     if (!otpCode || otpCode.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP code');
+      Alert.alert("Error", "Please enter a valid 6-digit OTP code");
       return;
     }
 
     if (!emailInput) {
-      Alert.alert('Error', 'Email is required');
+      Alert.alert("Error", "Email is required");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/verify-email-otp', {
+      const response = await api.post("/auth/verify-email-otp", {
         email: emailInput,
         otp: otpCode,
       });
 
       if (response.data.message) {
-        Alert.alert('Success', 'Email verified successfully!', [
+        Alert.alert("Success", "Email verified successfully!", [
           {
-            text: 'OK',
+            text: "OK",
             onPress: () => {
-              if (purpose === 'register') {
-                navigation.replace('RegistrationForm', { phoneNumber: '', email: emailInput });
+              if (purpose === "register") {
+                navigation.replace("RegistrationForm", {
+                  phoneNumber: "",
+                  email: emailInput,
+                });
               } else {
-                navigation.replace('Login', { email: emailInput });
+                navigation.replace("Login", { email: emailInput });
               }
             },
           },
@@ -134,8 +143,8 @@ export default function EmailVerification() {
       }
     } catch (error: any) {
       Alert.alert(
-        'Verification Failed',
-        error.response?.data?.message || 'Invalid OTP code. Please try again.'
+        "Verification Failed",
+        error.response?.data?.message || "Invalid OTP code. Please try again."
       );
     } finally {
       setLoading(false);
@@ -143,29 +152,36 @@ export default function EmailVerification() {
   };
 
   const handleResendOtp = async () => {
-    if (!emailInput || !emailInput.includes('@')) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (!emailInput || !emailInput.includes("@")) {
+      Alert.alert("Error", "Please enter a valid email address");
       return;
     }
 
     setResendLoading(true);
     try {
-      const response = await api.post('/auth/resend-email-otp', {
+      const response = await api.post("/auth/resend-email-otp", {
         email: emailInput,
       });
 
       if (response.data.message) {
         if (response.data.otp) {
-          Alert.alert('OTP Resent', `Your new OTP code is: ${response.data.otp}\n\n(This is shown only in development)`);
+          Alert.alert(
+            "OTP Resent",
+            `Your new OTP code is: ${response.data.otp}\n\n(This is shown only in development)`
+          );
         } else {
-          Alert.alert('OTP Resent', 'A new verification code has been sent to your email');
+          Alert.alert(
+            "OTP Resent",
+            "A new verification code has been sent to your email"
+          );
         }
-        setOtpCode(''); // Clear current OTP
+        setOtpCode(""); // Clear current OTP
       }
     } catch (error: any) {
       Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to resend OTP. Please try again.'
+        "Error",
+        error.response?.data?.message ||
+          "Failed to resend OTP. Please try again."
       );
     } finally {
       setResendLoading(false);
@@ -174,7 +190,7 @@ export default function EmailVerification() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <Animated.View
@@ -193,7 +209,9 @@ export default function EmailVerification() {
           <View style={styles.innerContent}>
             <Text style={styles.title}>Verify Your Email</Text>
             <Text style={styles.subtitle}>
-              {email ? `We sent a 6-digit code to ${email}` : 'Enter your email to receive a verification code'}
+              {email
+                ? `We sent a 6-digit code to ${email}`
+                : "Enter your email to receive a verification code"}
             </Text>
 
             {!email && (
@@ -237,7 +255,9 @@ export default function EmailVerification() {
                   placeholder="Enter 6-digit code"
                   placeholderTextColor="#999"
                   value={otpCode}
-                  onChangeText={(text) => setOtpCode(text.replace(/\D/g, '').slice(0, 6))}
+                  onChangeText={(text) =>
+                    setOtpCode(text.replace(/\D/g, "").slice(0, 6))
+                  }
                   keyboardType="number-pad"
                   maxLength={6}
                   editable={!loading}
@@ -279,87 +299,85 @@ export default function EmailVerification() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   content: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   innerContent: {
     padding: 20,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
     marginBottom: 32,
-    textAlign: 'center',
+    textAlign: "center",
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
   },
   otpInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
     padding: 16,
     fontSize: 24,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
     marginBottom: 24,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   emailInfo: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: "#e8f5e9",
     borderRadius: 8,
     padding: 12,
     marginBottom: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   emailInfoText: {
     fontSize: 14,
-    color: '#2e7d32',
-    fontWeight: '600',
+    color: "#2e7d32",
+    fontWeight: "600",
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 8,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 16,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   resendButton: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 12,
   },
   resendButtonText: {
-    color: '#007AFF',
+    color: "#007AFF",
     fontSize: 14,
   },
 });
-
-

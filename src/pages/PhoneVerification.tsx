@@ -1,29 +1,29 @@
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { CountryCode, isValidPhoneNumber } from 'libphonenumber-js';
-import React, { useEffect, useRef, useState } from 'react';
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { CountryCode, isValidPhoneNumber } from "libphonenumber-js";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Easing,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { RootStackParamList } from '../../App';
-import api from '../config/api';
+} from "react-native";
+import { RootStackParamList } from "../../App";
+import api from "../config/api";
 
 type PhoneVerificationScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  'PhoneVerification'
+  "PhoneVerification"
 >;
 
 interface Country {
@@ -33,27 +33,27 @@ interface Country {
 }
 
 const countries: Country[] = [
-  { name: 'Lebanon', code: 'LB', dialCode: '+961' },
-  { name: 'United States', code: 'US', dialCode: '+1' },
-  { name: 'United Kingdom', code: 'GB', dialCode: '+44' },
-  { name: 'France', code: 'FR', dialCode: '+33' },
-  { name: 'Germany', code: 'DE', dialCode: '+49' },
-  { name: 'Saudi Arabia', code: 'SA', dialCode: '+966' },
-  { name: 'UAE', code: 'AE', dialCode: '+971' },
-  { name: 'Egypt', code: 'EG', dialCode: '+20' },
-  { name: 'Jordan', code: 'JO', dialCode: '+962' },
-  { name: 'Syria', code: 'SY', dialCode: '+963' },
+  { name: "Lebanon", code: "LB", dialCode: "+961" },
+  { name: "United States", code: "US", dialCode: "+1" },
+  { name: "United Kingdom", code: "GB", dialCode: "+44" },
+  { name: "France", code: "FR", dialCode: "+33" },
+  { name: "Germany", code: "DE", dialCode: "+49" },
+  { name: "Saudi Arabia", code: "SA", dialCode: "+966" },
+  { name: "UAE", code: "AE", dialCode: "+971" },
+  { name: "Egypt", code: "EG", dialCode: "+20" },
+  { name: "Jordan", code: "JO", dialCode: "+962" },
+  { name: "Syria", code: "SY", dialCode: "+963" },
 ];
 
 export default function PhoneVerification() {
   const navigation = useNavigation<PhoneVerificationScreenNavigationProp>();
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [selectedCountry, setSelectedCountry] = useState<Country>(countries[0]); // Lebanon default
   const [isCountryPickerVisible, setIsCountryPickerVisible] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [step, setStep] = useState<'phone' | 'otp'>('phone'); // 'phone' or 'otp'
+  const [otpCode, setOtpCode] = useState("");
+  const [step, setStep] = useState<"phone" | "otp">("phone"); // 'phone' or 'otp'
   const [loading, setLoading] = useState(false);
-  const [verifiedPhoneNumber, setVerifiedPhoneNumber] = useState('');
+  const [verifiedPhoneNumber, setVerifiedPhoneNumber] = useState("");
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -78,12 +78,15 @@ export default function PhoneVerification() {
 
   // Format phone number for Lebanon
   const formatPhoneNumber = (text: string) => {
-    const digits = text.replace(/\D/g, '');
+    const digits = text.replace(/\D/g, "");
 
-    if (selectedCountry.code === 'LB' && digits.length > 0) {
+    if (selectedCountry.code === "LB" && digits.length > 0) {
       if (digits.length <= 2) return digits;
       if (digits.length <= 5) return `${digits.slice(0, 2)} ${digits.slice(2)}`;
-      return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 8)}`;
+      return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(
+        5,
+        8
+      )}`;
     }
 
     return digits;
@@ -91,44 +94,53 @@ export default function PhoneVerification() {
 
   // Step 1: Send OTP
   const handleSendOtp = async () => {
-    if (!phoneNumber || phoneNumber.replace(/\D/g, '').length < 8) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+    if (!phoneNumber || phoneNumber.replace(/\D/g, "").length < 8) {
+      Alert.alert("Error", "Please enter a valid phone number");
       return;
     }
 
-    const fullPhoneNumber = `${selectedCountry.dialCode}${phoneNumber.replace(/\D/g, '')}`;
+    const fullPhoneNumber = `${selectedCountry.dialCode}${phoneNumber.replace(
+      /\D/g,
+      ""
+    )}`;
 
     try {
       const isValid = isValidPhoneNumber(fullPhoneNumber, selectedCountry.code);
       if (!isValid) {
-        Alert.alert('Error', 'Please enter a valid phone number');
+        Alert.alert("Error", "Please enter a valid phone number");
         return;
       }
     } catch {
-      Alert.alert('Error', 'Please enter a valid phone number');
+      Alert.alert("Error", "Please enter a valid phone number");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/verify-phone', {
+      const response = await api.post("/auth/verify-phone", {
         phoneNumber: fullPhoneNumber,
       });
 
       if (response.data.message) {
         setVerifiedPhoneNumber(fullPhoneNumber);
-        setStep('otp');
+        setStep("otp");
         // In development, show OTP in alert
         if (response.data.otp) {
-          Alert.alert('OTP Sent', `Your OTP code is: ${response.data.otp}\n\n(This is shown only in development)`);
+          Alert.alert(
+            "OTP Sent",
+            `Your OTP code is: ${response.data.otp}\n\n(This is shown only in development)`
+          );
         } else {
-          Alert.alert('OTP Sent', 'Please check your phone for the verification code');
+          Alert.alert(
+            "OTP Sent",
+            "Please check your phone for the verification code"
+          );
         }
       }
     } catch (error: any) {
       Alert.alert(
-        'Error',
-        error.response?.data?.message || 'Failed to send OTP. Please try again.'
+        "Error",
+        error.response?.data?.message || "Failed to send OTP. Please try again."
       );
     } finally {
       setLoading(false);
@@ -138,26 +150,28 @@ export default function PhoneVerification() {
   // Step 2: Verify OTP
   const handleVerifyOtp = async () => {
     if (!otpCode || otpCode.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP code');
+      Alert.alert("Error", "Please enter a valid 6-digit OTP code");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await api.post('/auth/confirm-otp', {
+      const response = await api.post("/auth/confirm-otp", {
         phoneNumber: verifiedPhoneNumber,
         otp: otpCode,
       });
 
       if (response.data.message) {
-        Alert.alert('Success', 'Phone number verified successfully!');
+        Alert.alert("Success", "Phone number verified successfully!");
         // Navigate to registration form with verified phone number
-        navigation.replace('RegistrationForm', { phoneNumber: verifiedPhoneNumber });
+        navigation.replace("RegistrationForm", {
+          phoneNumber: verifiedPhoneNumber,
+        });
       }
     } catch (error: any) {
       Alert.alert(
-        'Verification Failed',
-        error.response?.data?.message || 'Invalid OTP code. Please try again.'
+        "Verification Failed",
+        error.response?.data?.message || "Invalid OTP code. Please try again."
       );
     } finally {
       setLoading(false);
@@ -179,7 +193,7 @@ export default function PhoneVerification() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <Animated.View
@@ -191,18 +205,23 @@ export default function PhoneVerification() {
           },
         ]}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.innerContent}>
             <Text style={styles.title}>
-              {step === 'phone' ? 'Verify Your Phone Number' : 'Enter Verification Code'}
+              {step === "phone"
+                ? "Verify Your Phone Number"
+                : "Enter Verification Code"}
             </Text>
             <Text style={styles.subtitle}>
-              {step === 'phone'
-                ? 'Enter your phone number to receive a verification code'
+              {step === "phone"
+                ? "Enter your phone number to receive a verification code"
                 : `We sent a 6-digit code to ${verifiedPhoneNumber}`}
             </Text>
 
-            {step === 'phone' ? (
+            {step === "phone" ? (
               <>
                 <View style={styles.phoneContainer}>
                   {/* Country Dropdown */}
@@ -210,7 +229,9 @@ export default function PhoneVerification() {
                     style={styles.countryButton}
                     onPress={() => setIsCountryPickerVisible(true)}
                   >
-                    <Text style={styles.countryCode}>{selectedCountry.code}</Text>
+                    <Text style={styles.countryCode}>
+                      {selectedCountry.code}
+                    </Text>
                     <Text style={styles.dropdownArrow}>▼</Text>
                   </TouchableOpacity>
 
@@ -220,7 +241,9 @@ export default function PhoneVerification() {
                     placeholder="Phone number"
                     placeholderTextColor="#999"
                     value={phoneNumber}
-                    onChangeText={(text) => setPhoneNumber(formatPhoneNumber(text))}
+                    onChangeText={(text) =>
+                      setPhoneNumber(formatPhoneNumber(text))
+                    }
                     keyboardType="phone-pad"
                     maxLength={15}
                     editable={!loading}
@@ -252,7 +275,9 @@ export default function PhoneVerification() {
                   placeholder="Enter 6-digit code"
                   placeholderTextColor="#999"
                   value={otpCode}
-                  onChangeText={(text) => setOtpCode(text.replace(/\D/g, '').slice(0, 6))}
+                  onChangeText={(text) =>
+                    setOtpCode(text.replace(/\D/g, "").slice(0, 6))
+                  }
                   keyboardType="number-pad"
                   maxLength={6}
                   editable={!loading}
@@ -274,8 +299,8 @@ export default function PhoneVerification() {
                 <TouchableOpacity
                   style={styles.backButton}
                   onPress={() => {
-                    setStep('phone');
-                    setOtpCode('');
+                    setStep("phone");
+                    setOtpCode("");
                   }}
                   disabled={loading}
                 >
@@ -321,159 +346,158 @@ export default function PhoneVerification() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   content: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   innerContent: {
     padding: 20,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
     marginBottom: 40,
-    textAlign: 'center',
+    textAlign: "center",
   },
   phoneContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 16,
     gap: 12,
   },
   countryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
     minWidth: 80,
   },
   countryCode: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
     marginRight: 8,
   },
   dropdownArrow: {
     fontSize: 10,
-    color: '#666',
+    color: "#666",
   },
   phoneInput: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
   },
   otpInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 8,
     padding: 16,
     fontSize: 24,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: 8,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: "#e0e0e0",
     marginBottom: 24,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   countryInfo: {
     marginBottom: 24,
-    alignItems: 'center',
+    alignItems: "center",
   },
   countryInfoText: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: "#007AFF",
     borderRadius: 8,
     padding: 16,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 16,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   backButton: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 12,
   },
   backButtonText: {
-    color: '#007AFF',
+    color: "#007AFF",
     fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '70%',
+    maxHeight: "70%",
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: "#e0e0e0",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
   },
   closeButton: {
     padding: 4,
   },
   closeButtonText: {
     fontSize: 24,
-    color: '#666',
+    color: "#666",
   },
   countryList: {
     maxHeight: 400,
   },
   countryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   countryName: {
     fontSize: 16,
-    color: '#333',
+    color: "#333",
   },
   countryDialCode: {
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    color: "#666",
+    fontWeight: "500",
   },
 });
-

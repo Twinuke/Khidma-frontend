@@ -1,23 +1,23 @@
-import React from 'react';
-import { 
-  KeyboardAvoidingView, 
-  ScrollView, 
-  TouchableWithoutFeedback, 
-  Keyboard, 
-  Platform, 
-  SafeAreaView, 
-  StyleSheet, 
-  View, 
-  ViewStyle 
-} from 'react-native';
+import React from "react";
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  View,
+  ViewStyle,
+} from "react-native";
 
 interface ScreenWrapperProps {
   children: React.ReactNode;
   style?: ViewStyle;
-  /** * If true (default), wraps content in a ScrollView. 
+  /** * If true (default), wraps content in a ScrollView.
    * Set to false for screens like Maps or flat lists that handle their own scrolling.
    */
-  scrollable?: boolean; 
+  scrollable?: boolean;
   /**
    * Extra padding for the keyboard avoidance view.
    * Useful if you have a custom header or tab bar.
@@ -25,16 +25,16 @@ interface ScreenWrapperProps {
   keyboardOffset?: number;
 }
 
-export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({ 
-  children, 
-  style, 
+export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
+  children,
+  style,
   scrollable = true,
-  keyboardOffset = 0
+  keyboardOffset = 0,
 }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"} 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoiding}
         keyboardVerticalOffset={keyboardOffset}
       >
@@ -49,9 +49,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
           </ScrollView>
         ) : (
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={[styles.container, style]}>
-              {children}
-            </View>
+            <View style={[styles.container, style]}>{children}</View>
           </TouchableWithoutFeedback>
         )}
       </KeyboardAvoidingView>
@@ -62,7 +60,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff', // Change this to match your app theme
+    backgroundColor: "#fff", // Change this to match your app theme
   },
   keyboardAvoiding: {
     flex: 1,
@@ -73,5 +71,5 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingBottom: 20, // Adds breathing room at the bottom
-  }
+  },
 });

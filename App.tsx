@@ -2,32 +2,34 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState, useCallback } from 'react'; // Added useCallback
+import React, { useCallback } from 'react'; // Added useCallback
 import { View } from 'react-native'; // Added View
 
-import { UserProvider, useUser } from './src/context/UserContext';
 import SplashScreenComponent from './src/components/SplashScreen';
+import { UserProvider, useUser } from './src/context/UserContext';
 
 // --- Auth Screens ---
+import EmailVerification from './src/pages/EmailVerification';
 import Login from './src/pages/Login';
 import PhoneNumberEntry from './src/pages/PhoneNumberEntry';
-import EmailVerification from './src/pages/EmailVerification';
 import RegistrationForm from './src/pages/RegistrationForm';
 
 // --- App Screens ---
-import Home from './src/pages/Home';
-import Profile from './src/pages/Profile';
-import Jobs from './src/pages/Jobs';
-import JobDetails from './src/pages/JobDetails';
-import CreateJob from './src/pages/CreateJob';
-import MyJobs from './src/pages/MyJobs';
-import Bids from './src/pages/Bids';
-import Messages from './src/pages/Messages';
-import Settings from './src/pages/Settings';
-import Notifications from './src/pages/Notifications';
-import Search from './src/pages/Search';
 import { ChatProvider } from './src/context/ChatContext';
+import Bids from './src/pages/Bids';
 import ChatScreen from './src/pages/ChatScreen';
+import CreateJob from './src/pages/CreateJob';
+import Home from './src/pages/Home';
+import JobBids from './src/pages/JobBids';
+import JobDetails from './src/pages/JobDetails';
+import Jobs from './src/pages/Jobs';
+import Messages from './src/pages/Messages';
+import MyJobs from './src/pages/MyJobs';
+import Notifications from './src/pages/Notifications';
+import Profile from './src/pages/Profile';
+import Search from './src/pages/Search';
+import Settings from './src/pages/Settings';
+
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
   EmailVerification: { email: string; purpose?: 'register' | 'login' };
@@ -44,6 +46,7 @@ export type RootStackParamList = {
   Settings: undefined;
   Notifications: undefined;
   Search: undefined;
+  JobBids: { jobId: number; jobTitle?: string };
 };
 
 const AuthStack = createNativeStackNavigator();
@@ -74,6 +77,7 @@ const AppNavigator = () => (
     <AppStack.Screen name="Notifications" component={Notifications} />
     <AppStack.Screen name="Search" component={Search} />
     <AppStack.Screen name="ChatScreen" component={ChatScreen} />
+    <AppStack.Screen name="JobBids" component={JobBids} />
   </AppStack.Navigator>
 );
 

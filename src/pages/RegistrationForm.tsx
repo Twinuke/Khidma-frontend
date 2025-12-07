@@ -1,20 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation, useRoute } from "@react-navigation/native";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  Animated,
-} from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { ScreenWrapper } from '../../components/ScreenWrapper';
-import { useUser } from '../context/UserContext';
+  View,
+} from "react-native";
+import { ScreenWrapper } from "../../components/ScreenWrapper";
+import { useUser } from "../context/UserContext";
 
-const mapUserTypeForApi = (value: 'Freelancer' | 'Client') => {
-  return value === 'Client' ? 1 : 0;
+const mapUserTypeForApi = (value: "Freelancer" | "Client") => {
+  return value === "Client" ? 1 : 0;
 };
 
 export default function RegistrationForm() {
@@ -22,35 +22,41 @@ export default function RegistrationForm() {
   const route = useRoute<any>();
   const { register } = useUser();
 
-  const initialPhone = route.params?.phoneNumber || '';
-  const initialEmail = route.params?.email || '';
+  const initialPhone = route.params?.phoneNumber || "";
+  const initialEmail = route.params?.email || "";
 
-  const [fullName, setFullName] = useState('');
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState(initialEmail);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(initialPhone);
-  const [profileBio, setProfileBio] = useState('');
-  const [userType, setUserType] = useState<'Freelancer' | 'Client'>('Freelancer');
+  const [profileBio, setProfileBio] = useState("");
+  const [userType, setUserType] = useState<"Freelancer" | "Client">(
+    "Freelancer"
+  );
   const [loading, setLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const handleRegister = async () => {
     if (!fullName || !email || !password || !phoneNumber) {
-      Alert.alert('Error', 'Please fill in all required fields.');
+      Alert.alert("Error", "Please fill in all required fields.");
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters.');
+      Alert.alert("Error", "Password must be at least 6 characters.");
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
+      Alert.alert("Error", "Passwords do not match.");
       return;
     }
 
@@ -67,16 +73,15 @@ export default function RegistrationForm() {
 
       console.log("Registering...", payload);
       await register(payload);
-      
+
       // ✅ FIX: No navigation needed!
       // The Context update will trigger App.tsx to show the Home Screen automatically.
-      
     } catch (error: any) {
       console.log("Register Error:", error);
-      let msg = 'Registration failed.';
+      let msg = "Registration failed.";
       if (error.response?.data?.message) msg = error.response.data.message;
       else if (error.message) msg = error.message;
-      Alert.alert('Registration Error', msg);
+      Alert.alert("Registration Error", msg);
     } finally {
       setLoading(false);
     }
@@ -91,43 +96,112 @@ export default function RegistrationForm() {
         </View>
 
         <View style={styles.typeSelector}>
-          <TouchableOpacity 
-            style={[styles.typeBtn, userType === 'Freelancer' && styles.typeBtnActive]}
-            onPress={() => setUserType('Freelancer')}
+          <TouchableOpacity
+            style={[
+              styles.typeBtn,
+              userType === "Freelancer" && styles.typeBtnActive,
+            ]}
+            onPress={() => setUserType("Freelancer")}
           >
-            <Text style={[styles.typeText, userType === 'Freelancer' && styles.typeTextActive]}>Freelancer</Text>
+            <Text
+              style={[
+                styles.typeText,
+                userType === "Freelancer" && styles.typeTextActive,
+              ]}
+            >
+              Freelancer
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.typeBtn, userType === 'Client' && styles.typeBtnActive]}
-            onPress={() => setUserType('Client')}
+          <TouchableOpacity
+            style={[
+              styles.typeBtn,
+              userType === "Client" && styles.typeBtnActive,
+            ]}
+            onPress={() => setUserType("Client")}
           >
-            <Text style={[styles.typeText, userType === 'Client' && styles.typeTextActive]}>Client</Text>
+            <Text
+              style={[
+                styles.typeText,
+                userType === "Client" && styles.typeTextActive,
+              ]}
+            >
+              Client
+            </Text>
           </TouchableOpacity>
         </View>
 
         <Text style={styles.label}>Full Name *</Text>
-        <TextInput style={styles.input} placeholder="John Doe" value={fullName} onChangeText={setFullName} />
+        <TextInput
+          style={styles.input}
+          placeholder="John Doe"
+          value={fullName}
+          onChangeText={setFullName}
+        />
 
         <Text style={styles.label}>Phone Number *</Text>
-        <TextInput style={styles.input} placeholder="+961..." value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
+        <TextInput
+          style={styles.input}
+          placeholder="+961..."
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          keyboardType="phone-pad"
+        />
 
         <Text style={styles.label}>Email *</Text>
-        <TextInput style={styles.input} placeholder="john@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+        <TextInput
+          style={styles.input}
+          placeholder="john@example.com"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
 
         <Text style={styles.label}>Password *</Text>
-        <TextInput style={styles.input} placeholder="Min 6 characters" value={password} onChangeText={setPassword} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          placeholder="Min 6 characters"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
         <Text style={styles.label}>Confirm Password *</Text>
-        <TextInput style={styles.input} placeholder="Retype password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+        <TextInput
+          style={styles.input}
+          placeholder="Retype password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+        />
 
         <Text style={styles.label}>Bio (Optional)</Text>
-        <TextInput style={[styles.input, styles.bioInput]} placeholder="Tell us about yourself..." value={profileBio} onChangeText={setProfileBio} multiline numberOfLines={3} textAlignVertical="top" />
+        <TextInput
+          style={[styles.input, styles.bioInput]}
+          placeholder="Tell us about yourself..."
+          value={profileBio}
+          onChangeText={setProfileBio}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
 
-        <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleRegister} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Create Account</Text>}
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Create Account</Text>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate('Login')}>
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={() => navigation.navigate("Login")}
+        >
           <Text style={styles.linkText}>Already have an account? Sign In</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -136,21 +210,51 @@ export default function RegistrationForm() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 24, flex: 1, justifyContent: 'center' },
-  header: { marginBottom: 24, alignItems: 'center' },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#0F172A' },
-  subtitle: { fontSize: 16, color: '#64748B', marginTop: 4 },
-  typeSelector: { flexDirection: 'row', marginBottom: 24, backgroundColor: '#F1F5F9', borderRadius: 12, padding: 4 },
-  typeBtn: { flex: 1, padding: 12, alignItems: 'center', borderRadius: 10 },
-  typeBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, elevation: 2 },
-  typeText: { fontWeight: '600', color: '#64748B' },
-  typeTextActive: { color: '#2563EB' },
-  label: { fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 6, marginLeft: 2 },
-  input: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+  content: { padding: 24, flex: 1, justifyContent: "center" },
+  header: { marginBottom: 24, alignItems: "center" },
+  title: { fontSize: 26, fontWeight: "bold", color: "#0F172A" },
+  subtitle: { fontSize: 16, color: "#64748B", marginTop: 4 },
+  typeSelector: {
+    flexDirection: "row",
+    marginBottom: 24,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    padding: 4,
+  },
+  typeBtn: { flex: 1, padding: 12, alignItems: "center", borderRadius: 10 },
+  typeBtnActive: {
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    elevation: 2,
+  },
+  typeText: { fontWeight: "600", color: "#64748B" },
+  typeTextActive: { color: "#2563EB" },
+  label: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#334155",
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  input: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
   bioInput: { minHeight: 80 },
-  button: { backgroundColor: '#2563EB', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 12 },
+  button: {
+    backgroundColor: "#2563EB",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 12,
+  },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  linkButton: { marginTop: 24, alignItems: 'center' },
-  linkText: { color: '#2563EB', fontWeight: '600' },
+  buttonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  linkButton: { marginTop: 24, alignItems: "center" },
+  linkText: { color: "#2563EB", fontWeight: "600" },
 });
