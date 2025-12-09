@@ -5,13 +5,13 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // ✅ Import this
 import api from "../config/api";
 import { useChat } from "../context/ChatContext";
 import { useUser } from "../context/UserContext";
@@ -21,6 +21,7 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const { user } = useUser();
   const { connection, connectToChat } = useChat();
+  const insets = useSafeAreaInsets(); // ✅ Get safe area insets
 
   // Params passed from navigation
   const { conversationId, otherUser } = route.params;
@@ -34,10 +35,8 @@ export default function ChatScreen() {
     fetchHistory();
 
     if (connection) {
-      // Join the "Room" for this conversation
       connection.invoke("JoinConversation", conversationId.toString());
 
-      // Listen for incoming
       connection.on("ReceiveMessage", (msg) => {
         setMessages((prev) => [...prev, msg]);
         scrollToBottom();
@@ -107,7 +106,8 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    // ✅ Replaced SafeAreaView with View + paddingTop to handle top inset manually
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
@@ -126,8 +126,20 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View style={styles.inputContainer}>
+        {/* ✅ Added dynamic paddingBottom to fix Android Nav Bar overlap */}
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              paddingBottom:
+                Platform.OS === "android"
+                  ? insets.bottom + 10
+                  : Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
           <TextInput
             style={styles.input}
             value={text}
@@ -139,7 +151,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -155,7 +167,7 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   headerTitle: { fontSize: 18, fontWeight: "bold" },
-  list: { padding: 16 },
+  list: { padding: 16, paddingBottom: 20 },
   bubbleWrapper: { marginBottom: 12, flexDirection: "row" },
   myWrapper: { justifyContent: "flex-end" },
   otherWrapper: { justifyContent: "flex-start" },
@@ -166,6 +178,8 @@ const styles = StyleSheet.create({
   myText: { color: "#FFF" },
   otherText: { color: "#000" },
   timeText: { fontSize: 10, marginTop: 4, alignSelf: "flex-end", opacity: 0.7 },
+
+  // Updated Input Container
   inputContainer: {
     flexDirection: "row",
     padding: 12,
@@ -173,6 +187,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#E2E8F0",
     alignItems: "center",
+    // Padding bottom is now handled inline
   },
   input: {
     flex: 1,

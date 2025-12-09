@@ -1,12 +1,10 @@
 import React from "react";
 import {
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  TouchableWithoutFeedback,
   View,
   ViewStyle,
 } from "react-native";
@@ -14,14 +12,7 @@ import {
 interface ScreenWrapperProps {
   children: React.ReactNode;
   style?: ViewStyle;
-  /** * If true (default), wraps content in a ScrollView.
-   * Set to false for screens like Maps or flat lists that handle their own scrolling.
-   */
   scrollable?: boolean;
-  /**
-   * Extra padding for the keyboard avoidance view.
-   * Useful if you have a custom header or tab bar.
-   */
   keyboardOffset?: number;
 }
 
@@ -48,9 +39,8 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
             {children}
           </ScrollView>
         ) : (
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={[styles.container, style]}>{children}</View>
-          </TouchableWithoutFeedback>
+          // ✅ Removed TouchableWithoutFeedback to fix scrolling bug
+          <View style={[styles.container, style]}>{children}</View>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -60,7 +50,7 @@ export const ScreenWrapper: React.FC<ScreenWrapperProps> = ({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#fff", // Change this to match your app theme
+    backgroundColor: "#fff",
   },
   keyboardAvoiding: {
     flex: 1,
@@ -70,6 +60,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 20, // Adds breathing room at the bottom
+    paddingBottom: 20,
   },
 });
