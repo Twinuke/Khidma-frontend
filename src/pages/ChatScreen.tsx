@@ -14,18 +14,22 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
 import { useChat } from "../context/ChatContext";
-import { useUser } from "../context/UserContext";
+import { useUser } from "../context/UserContext"; // ✅ Ensure this import
 
 export default function ChatScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation();
-  const { user } = useUser();
+
+  // ✅ 1. Get 'refreshCounts' from UserContext instead
+  const { user, refreshCounts } = useUser();
+
   const {
     connection,
     connectToChat,
-    refreshUnreadCount,
+    // refreshUnreadCount, // ❌ REMOVED: This no longer exists in ChatContext
     setActiveConversationId,
-  } = useChat(); // ✅ Added helpers
+  } = useChat();
+
   const insets = useSafeAreaInsets();
 
   const { conversationId, otherUser: paramOtherUser } = route.params;
@@ -39,19 +43,21 @@ export default function ChatScreen() {
   useEffect(() => {
     if (conversationId && user?.userId) {
       markAsRead();
-      setActiveConversationId(conversationId); // ✅ Tell context we are here
+      setActiveConversationId(conversationId);
     }
 
     return () => {
-      setActiveConversationId(null); // ✅ Cleanup when leaving
+      setActiveConversationId(null);
     };
   }, [conversationId, user?.userId]);
 
   const markAsRead = async () => {
     try {
-      // ✅ This marks messages read AND clears related notifications
+      // Backend: Mark as read
       await api.put(`/Chat/read/${conversationId}/${user?.userId}`);
-      refreshUnreadCount(); // ✅ Refresh global badge
+
+      // ✅ Frontend: Refresh Global Badge (UserContext)
+      refreshCounts();
     } catch (e) {
       console.log("Error marking read:", e);
     }
@@ -79,15 +85,19 @@ export default function ChatScreen() {
     fetchHistory();
 
     if (connection) {
-      connection.invoke("JoinConversation", conversationId.toString());
+      connection
+        .invoke("JoinConversation", conversationId.toString())
+        .catch((err) => console.error("Join Conversation Error:", err));
 
-      connection.on("ReceiveMessage", (msg: any) => {
+      const handleReceiveMessage = (msg: any) => {
         setMessages((prev) => [...prev, msg]);
         scrollToBottom();
-      });
+      };
+
+      connection.on("ReceiveMessage", handleReceiveMessage);
 
       return () => {
-        connection.off("ReceiveMessage");
+        connection.off("ReceiveMessage", handleReceiveMessage);
       };
     }
   }, [connection, conversationId]);

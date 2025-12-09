@@ -10,17 +10,19 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ScreenWrapper } from "../../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
+// ✅ Flexible interface to handle potential casing issues
 interface Notification {
-  notificationId: number;
+  notificationId?: number; // Backend might send NotificationId
+  NotificationId?: number;
   userId: number;
   title: string;
   message: string;
   type: number;
   relatedEntityId?: number;
+  RelatedEntityId?: number;
   isRead: boolean;
   createdAt: string;
 }
@@ -40,7 +42,13 @@ export default function Notifications() {
   );
 
   const fetchNotifications = async () => {
-    if (!user?.userId) return;
+    // ✅ FIX: Ensure loading stops even if user is missing
+    if (!user?.userId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       const response = await api.get(`/Notifications/user/${user.userId}`);
       setNotifications(response.data);
@@ -58,83 +66,85 @@ export default function Notifications() {
   };
 
   const handlePress = async (item: Notification) => {
+    // Helper to get ID safely
+    const id = item.notificationId || item.NotificationId;
+    const entityId = item.relatedEntityId || item.RelatedEntityId;
+
+    if (!id) return;
+
     // 1. Optimistic Update
-    const updated = notifications.map((n) =>
-      n.notificationId === item.notificationId ? { ...n, isRead: true } : n
-    );
+    const updated = notifications.map((n) => {
+      const nId = n.notificationId || n.NotificationId;
+      return nId === id ? { ...n, isRead: true } : n;
+    });
     setNotifications(updated);
 
     // 2. Mark as read
     try {
-      await api.put(`/Notifications/${item.notificationId}/read`);
+      await api.put(`/Notifications/${id}/read`);
       refreshCounts();
     } catch (e) {
       console.log(e);
     }
 
     // 3. Navigation Logic
-    switch (item.type) {
-      case 1: // Bid Placed
-        if (item.relatedEntityId) {
+    if (entityId) {
+      switch (item.type) {
+        case 1: // Bid Placed (Freelancer POV)
+        case 4: // System (Generic Job Updates)
           if (user?.userType === 1) {
-            navigation.navigate("ClientJobDetails", {
-              jobId: item.relatedEntityId,
-            });
+            // Client
+            navigation.navigate("ClientJobDetails", { jobId: entityId });
           } else {
-            navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+            // Freelancer
+            // ✅ FIX: Show "Already Applied" state
+            navigation.navigate("JobDetails", {
+              jobId: entityId,
+              hasPlacedBid: true,
+            });
           }
-        }
-        break;
+          break;
 
-      case 2: // Bid Accepted
-        if (item.relatedEntityId) {
-          navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
-        }
-        break;
+        case 2: // Bid Accepted
+          // Go to Job Details (which will show contract/status)
+          navigation.navigate("JobDetails", {
+            jobId: entityId,
+            hasPlacedBid: true,
+          });
+          break;
 
-      // ✅ UPDATED: Chat Message is now Type 9
-      case 9:
-        if (item.relatedEntityId) {
+        case 9: // Chat Message
           navigation.navigate("ChatScreen", {
-            conversationId: item.relatedEntityId,
+            conversationId: entityId,
           });
-        }
-        break;
+          break;
 
-      case 5: // Connection Request
-        navigation.navigate("Connections");
-        break;
+        case 5: // Connection Request
+          navigation.navigate("Connections");
+          break;
 
-      // ✅ UPDATED: Connection Accepted is Type 10
-      case 10:
-        navigation.navigate("Connections", {
-          highlightUserId: item.relatedEntityId,
-        });
-        break;
+        case 10: // Connection Accepted
+          navigation.navigate("Connections", {
+            highlightUserId: entityId,
+          });
+          break;
 
-      case 6: // Like
-      case 7: // Comment
-      case 8: // Reaction
-        if (item.relatedEntityId) {
+        case 6: // Social Interactions
+        case 7:
+        case 8:
           navigation.navigate("SocialPage", {
-            targetPostId: item.relatedEntityId,
+            targetPostId: entityId,
           });
-        } else {
-          navigation.navigate("SocialPage");
-        }
-        break;
+          break;
 
-      default:
-        // Handle generic system messages (Type 4 or 0)
-        if (item.relatedEntityId && (item.type === 0 || item.type === 4)) {
-          if (user?.userType === 1) {
-            navigation.navigate("ClientJobDetails", {
-              jobId: item.relatedEntityId,
-            });
-          } else {
-            navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
-          }
-        }
+        default:
+          break;
+      }
+    } else {
+      // Fallback for types without entity ID
+      if (item.type === 5 || item.type === 10)
+        navigation.navigate("Connections");
+      if ([6, 7, 8].includes(item.type)) navigation.navigate("SocialPage");
     }
   };
 
@@ -145,11 +155,11 @@ export default function Notifications() {
       case 2:
         return <Ionicons name="checkmark-circle" size={24} color="#10B981" />;
       case 9:
-        return <Ionicons name="chatbubbles" size={24} color="#2563EB" />; // ✅ Chat (Type 9)
+        return <Ionicons name="chatbubbles" size={24} color="#2563EB" />;
       case 5:
         return <Ionicons name="person-add" size={24} color="#8B5CF6" />;
       case 10:
-        return <Ionicons name="people" size={24} color="#059669" />; // ✅ Connected (Type 10)
+        return <Ionicons name="people" size={24} color="#059669" />;
       case 6:
         return <Ionicons name="heart" size={24} color="#EF4444" />;
       case 7:
@@ -180,7 +190,8 @@ export default function Notifications() {
   );
 
   return (
-    <ScreenWrapper style={styles.container} scrollable={false}>
+    // Replaced ScreenWrapper with standard View to ensure basic compatibility if wrapper is missing
+    <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
@@ -203,7 +214,14 @@ export default function Notifications() {
       ) : (
         <FlatList
           data={notifications}
-          keyExtractor={(item) => item.notificationId.toString()}
+          // ✅ FIX: Safe access to ID
+          keyExtractor={(item) =>
+            (
+              item.notificationId ||
+              item.NotificationId ||
+              Math.random()
+            ).toString()
+          }
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           refreshControl={
@@ -221,7 +239,7 @@ export default function Notifications() {
           }
         />
       )}
-    </ScreenWrapper>
+    </View>
   );
 }
 
@@ -232,7 +250,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 40,
+    paddingTop: 60, // Adjusted for safe area
     paddingBottom: 10,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,

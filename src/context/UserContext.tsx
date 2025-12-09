@@ -27,9 +27,10 @@ interface UserContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
 
-  // ✅ New Badge Counts
+  // ✅ Badge Counts
   unreadNotifications: number;
   pendingRequests: number;
+  unreadChatCount: number; // ✅ Added Chat Count here
   refreshCounts: () => Promise<void>;
 
   login: (email: string, password: string) => Promise<void>;
@@ -44,8 +45,11 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Badge States
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [unreadChatCount, setUnreadChatCount] = useState(0); // ✅ Init Chat Count
 
   useEffect(() => {
     loadUserFromStorage();
@@ -59,7 +63,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       if (token && userId) {
         const response = await api.get(`/Users/${userId}`);
         setUser(response.data);
-        fetchBadges(userId); // Fetch counts immediately
+        fetchBadges(userId); // Fetch all counts immediately
       }
     } catch (error) {
       console.log("Session Load Error:", error);
@@ -68,7 +72,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ✅ Global Fetch for Badges
+  // ✅ Global Fetch for ALL Badges
   const fetchBadges = async (userId: string | number) => {
     try {
       // 1. Notifications
@@ -76,9 +80,17 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       const unread = notifRes.data.filter((n: any) => !n.isRead).length;
       setUnreadNotifications(unread);
 
-      // 2. Pending Requests
+      // 2. Pending Requests (Network Tab)
       const reqRes = await api.get(`/Social/requests/${userId}`);
       setPendingRequests(reqRes.data.length);
+
+      // 3. Unread Chat Messages (Chat Tab)
+      // We fetch conversations and sum up the 'unreadCount' of each
+      const chatRes = await api.get(`/Chat/my/${userId}`);
+      const totalChats = chatRes.data.reduce((sum: number, chat: any) => {
+        return sum + (chat.unreadCount || 0);
+      }, 0);
+      setUnreadChatCount(totalChats);
     } catch (e) {
       console.log("Badge fetch error", e);
     }
@@ -118,6 +130,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setUnreadNotifications(0);
     setPendingRequests(0);
+    setUnreadChatCount(0); // Clear chat count
   };
 
   const updateUser = async (updatedData: Partial<User>) => {
@@ -136,7 +149,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       try {
         const response = await api.get(`/Users/${user.userId}`);
         setUser(response.data);
-        fetchBadges(user.userId); // Also refresh badges
+        fetchBadges(user.userId);
       } catch (e) {
         console.log("Refresh failed", e);
       }
@@ -151,6 +164,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         unreadNotifications,
         pendingRequests,
+        unreadChatCount, // ✅ Expose to app
         refreshCounts: () => fetchBadges(user?.userId || 0),
         login,
         register,
