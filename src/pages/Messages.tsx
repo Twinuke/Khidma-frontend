@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -10,12 +10,14 @@ import {
   View,
 } from "react-native";
 import api from "../config/api";
+import { useChat } from "../context/ChatContext"; // ✅ Import ChatContext
 import { useUser } from "../context/UserContext";
 
 export default function Messages() {
   const { user } = useUser();
+  const { connection } = useChat(); // ✅ Get the signalR connection
   const navigation = useNavigation<any>();
-  const [conversations, setConversations] = useState([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   useFocusEffect(
@@ -23,6 +25,22 @@ export default function Messages() {
       if (user) fetchConversations();
     }, [user])
   );
+
+  // ✅ Real-time listener: Update list if a message comes in while viewing this screen
+  useEffect(() => {
+    if (!connection) return;
+
+    const handleMessage = () => {
+      // For simplicity, we just re-fetch to get updated counts and last messages
+      fetchConversations();
+    };
+
+    connection.on("ReceiveMessage", handleMessage);
+
+    return () => {
+      connection.off("ReceiveMessage", handleMessage);
+    };
+  }, [connection]);
 
   const fetchConversations = async () => {
     try {
@@ -36,6 +54,11 @@ export default function Messages() {
   const openChat = (conversationId: number, otherUser: any) => {
     navigation.navigate("ChatScreen", { conversationId, otherUser });
   };
+
+  // Filter local search results
+  const filteredConversations = conversations.filter((c) =>
+    c.otherUser.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <View style={styles.container}>
@@ -65,7 +88,7 @@ export default function Messages() {
       </View>
 
       <FlatList
-        data={conversations}
+        data={filteredConversations}
         keyExtractor={(item: any) => item.conversationId.toString()}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -78,12 +101,39 @@ export default function Messages() {
               </Text>
             </View>
             <View style={styles.content}>
-              <Text style={styles.name}>{item.otherUser.fullName}</Text>
-              <Text style={styles.msg} numberOfLines={1}>
-                {item.lastMessage?.content || "Start chatting..."}
-              </Text>
+              <View style={styles.rowTop}>
+                <Text style={styles.name}>{item.otherUser.fullName}</Text>
+              </View>
+
+              <View style={styles.rowBottom}>
+                <Text
+                  style={[
+                    styles.msg,
+                    // Highlight text if unread
+                    item.unreadCount > 0 && styles.msgUnread,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {item.lastMessage?.content || "Start chatting..."}
+                </Text>
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+
+            {/* ✅ NOTIFICATION BADGE */}
+            {item.unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>
+                  {item.unreadCount > 99 ? "99+" : item.unreadCount}
+                </Text>
+              </View>
+            )}
+
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color="#CBD5E1"
+              style={{ marginLeft: 8 }}
+            />
           </TouchableOpacity>
         )}
       />
@@ -93,8 +143,6 @@ export default function Messages() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-
-  // ✅ Standardized Header Styles
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -116,7 +164,6 @@ const styles = StyleSheet.create({
   },
   headerRight: { flex: 1, alignItems: "flex-end" },
   iconBtn: { padding: 4 },
-
   searchBox: {
     flexDirection: "row",
     margin: 16,
@@ -146,6 +193,30 @@ const styles = StyleSheet.create({
   },
   avatarText: { fontSize: 20, fontWeight: "bold", color: "#2563EB" },
   content: { flex: 1 },
-  name: { fontSize: 16, fontWeight: "600" },
-  msg: { color: "#64748B", marginTop: 2 },
+  rowTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  rowBottom: { flexDirection: "row", justifyContent: "space-between" },
+  name: { fontSize: 16, fontWeight: "600", color: "#0F172A" },
+  msg: { color: "#64748B", fontSize: 14 },
+  msgUnread: { color: "#0F172A", fontWeight: "600" }, // Darker text for unread msgs
+
+  // ✅ Badge Styles
+  badge: {
+    backgroundColor: "#EF4444",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 5,
+    marginLeft: 8,
+  },
+  badgeText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
 });

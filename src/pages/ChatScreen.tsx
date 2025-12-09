@@ -20,17 +20,43 @@ export default function ChatScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation();
   const { user } = useUser();
-  const { connection, connectToChat } = useChat();
+  const {
+    connection,
+    connectToChat,
+    refreshUnreadCount,
+    setActiveConversationId,
+  } = useChat(); // ✅ Added helpers
   const insets = useSafeAreaInsets();
 
   const { conversationId, otherUser: paramOtherUser } = route.params;
-  const [otherUser, setOtherUser] = useState(paramOtherUser); // ✅ State for header user
+  const [otherUser, setOtherUser] = useState(paramOtherUser);
 
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
   const flatListRef = useRef<FlatList>(null);
 
-  // ✅ Fetch header info if missing (from Notification)
+  // ✅ Mark messages as read when entering screen
+  useEffect(() => {
+    if (conversationId && user?.userId) {
+      markAsRead();
+      setActiveConversationId(conversationId); // ✅ Tell context we are here
+    }
+
+    return () => {
+      setActiveConversationId(null); // ✅ Cleanup when leaving
+    };
+  }, [conversationId, user?.userId]);
+
+  const markAsRead = async () => {
+    try {
+      // ✅ This marks messages read AND clears related notifications
+      await api.put(`/Chat/read/${conversationId}/${user?.userId}`);
+      refreshUnreadCount(); // ✅ Refresh global badge
+    } catch (e) {
+      console.log("Error marking read:", e);
+    }
+  };
+
   useEffect(() => {
     if (!otherUser && conversationId) {
       fetchConversationDetails();
@@ -39,9 +65,7 @@ export default function ChatScreen() {
 
   const fetchConversationDetails = async () => {
     try {
-      // Fetch details to know who we are chatting with
       const res = await api.get(`/Chat/${conversationId}`);
-      // Backend returns User1 and User2. We need the one that isn't 'user.userId'
       const conv = res.data;
       const friend = conv.user1Id === user?.userId ? conv.user2 : conv.user1;
       setOtherUser(friend);
@@ -131,7 +155,6 @@ export default function ChatScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
-        {/* ✅ Dynamic Header Title */}
         <Text style={styles.headerTitle}>{otherUser?.fullName || "Chat"}</Text>
         <View style={{ width: 24 }} />
       </View>
