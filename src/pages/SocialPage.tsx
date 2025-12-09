@@ -24,14 +24,14 @@ const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 export default function SocialPage() {
   const { user } = useUser();
   const navigation = useNavigation<any>();
-  const route = useRoute<any>(); // ✅ Access route params
-  const { targetPostId } = route.params || {}; // ✅ Get target post ID if exists
+  const route = useRoute<any>();
+  const { targetPostId } = route.params || {};
 
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectionsCount, setConnectionsCount] = useState(0);
 
-  const flatListRef = useRef<FlatList>(null); // ✅ Ref for scrolling
+  const flatListRef = useRef<FlatList>(null);
 
   // Comments State
   const [activePostId, setActivePostId] = useState<number | null>(null);
@@ -42,11 +42,24 @@ export default function SocialPage() {
 
   const activePost = posts.find((p) => p.postId === activePostId);
 
+  // Helper: Format Date & Time
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   useEffect(() => {
     if (user?.userId) fetchFeed();
   }, [user?.userId]);
 
-  // ✅ Scroll to target post when posts are loaded
   useEffect(() => {
     if (posts.length > 0 && targetPostId) {
       const index = posts.findIndex((p) => p.postId === targetPostId);
@@ -57,7 +70,7 @@ export default function SocialPage() {
             animated: true,
             viewPosition: 0.5,
           });
-        }, 500); // Small delay to ensure rendering
+        }, 500);
       }
     }
   }, [posts, targetPostId]);
@@ -76,21 +89,65 @@ export default function SocialPage() {
     }
   };
 
-  const handleReaction = async (postId: number, reaction: string) => {
-    setReactionPickerPostId(null);
+  const handleLike = async (postId: number) => {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.postId === postId) {
-          const isNew = !p.myReaction;
+          const isLiked = p.isLiked;
           return {
             ...p,
-            myReaction: reaction,
-            likesCount: isNew ? p.likesCount + 1 : p.likesCount,
+            isLiked: !isLiked,
+            likesCount: isLiked ? p.likesCount - 1 : p.likesCount + 1,
           };
         }
         return p;
       })
     );
+    try {
+      await api.post(`/Social/posts/${postId}/like?userId=${user?.userId}`);
+    } catch (e) {
+      console.log("Like failed", e);
+    }
+  };
+
+  // ✅ Fixed Reaction Toggle
+  const handleReaction = async (postId: number, reaction: string) => {
+    setReactionPickerPostId(null);
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.postId === postId) {
+          const currentReaction = p.myReaction;
+          const isRemoving = currentReaction === reaction; // Check if toggling off
+
+          let newReactions = [...(p.reactions || [])];
+
+          if (currentReaction) {
+            newReactions = newReactions
+              .map((r) =>
+                r.type === currentReaction ? { ...r, count: r.count - 1 } : r
+              )
+              .filter((r) => r.count > 0);
+          }
+
+          if (!isRemoving) {
+            const existing = newReactions.find((r) => r.type === reaction);
+            if (existing) {
+              existing.count += 1;
+            } else {
+              newReactions.push({ type: reaction, count: 1 });
+            }
+          }
+
+          return {
+            ...p,
+            myReaction: isRemoving ? null : reaction,
+            reactions: newReactions,
+          };
+        }
+        return p;
+      })
+    );
+
     try {
       await api.post(`/Social/posts/react`, {
         postId,
@@ -99,26 +156,6 @@ export default function SocialPage() {
       });
     } catch (e) {
       console.log("Reaction failed", e);
-    }
-  };
-
-  const handleSimpleLike = (postId: number, currentReaction: string | null) => {
-    if (currentReaction) handleRemoveReaction(postId);
-    else handleReaction(postId, "❤️");
-  };
-
-  const handleRemoveReaction = async (postId: number) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.postId === postId)
-          return { ...p, myReaction: null, likesCount: p.likesCount - 1 };
-        return p;
-      })
-    );
-    try {
-      await api.delete(`/Social/posts/${postId}/react?userId=${user?.userId}`);
-    } catch (e) {
-      console.log(e);
     }
   };
 
@@ -190,15 +227,15 @@ export default function SocialPage() {
 
   const renderPost = ({ item }: { item: any }) => {
     const isJobPosted = item.type === 0;
-    const timeAgo = new Date(item.createdAt).toLocaleDateString();
-    // Highlight the post if it matches targetPostId
+    const formattedDate = formatDateTime(item.createdAt);
     const isTarget = item.postId === targetPostId;
 
     return (
       <View
         style={[styles.card, isTarget && styles.highlightCard]}
         onStartShouldSetResponder={() => {
-          setReactionPickerPostId(null);
+          if (reactionPickerPostId === item.postId)
+            setReactionPickerPostId(null);
           return false;
         }}
       >
@@ -212,7 +249,7 @@ export default function SocialPage() {
           />
           <View>
             <Text style={styles.username}>{item.user.fullName}</Text>
-            <Text style={styles.timestamp}>{timeAgo}</Text>
+            <Text style={styles.timestamp}>{formattedDate}</Text>
           </View>
         </View>
 
@@ -244,7 +281,6 @@ export default function SocialPage() {
           )}
         </View>
 
-        {/* Reaction Bubbles */}
         {item.reactions && item.reactions.length > 0 && (
           <View style={styles.reactionsList}>
             {item.reactions.map((r: any) => (
@@ -273,7 +309,7 @@ export default function SocialPage() {
                   onPress={() => handleReaction(item.postId, emoji)}
                   style={styles.emojiBtn}
                 >
-                  <Text style={{ fontSize: 20 }}>{emoji}</Text>
+                  <Text style={{ fontSize: 24 }}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -281,21 +317,40 @@ export default function SocialPage() {
 
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => handleSimpleLike(item.postId, item.myReaction)}
-            onLongPress={() => setReactionPickerPostId(item.postId)}
+            onPress={() => handleLike(item.postId)}
+          >
+            <Ionicons
+              name={item.isLiked ? "heart" : "heart-outline"}
+              size={22}
+              color={item.isLiked ? "#EF4444" : "#64748B"}
+            />
+            <Text
+              style={[styles.actionText, item.isLiked && { color: "#EF4444" }]}
+            >
+              Like
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() =>
+              setReactionPickerPostId(
+                reactionPickerPostId === item.postId ? null : item.postId
+              )
+            }
           >
             {item.myReaction ? (
               <Text style={{ fontSize: 20 }}>{item.myReaction}</Text>
             ) : (
-              <Ionicons name="heart-outline" size={20} color="#64748B" />
+              <Ionicons name="happy-outline" size={22} color="#64748B" />
             )}
             <Text
               style={[
                 styles.actionText,
-                item.myReaction && { color: "#EF4444" },
+                item.myReaction && { color: "#2563EB" },
               ]}
             >
-              {item.myReaction ? "Reacted" : "Like"}
+              {item.myReaction ? "Reacted" : "React"}
             </Text>
           </TouchableOpacity>
 
@@ -313,7 +368,6 @@ export default function SocialPage() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -333,7 +387,7 @@ export default function SocialPage() {
         />
       ) : (
         <FlatList
-          ref={flatListRef} // ✅ Attached Ref
+          ref={flatListRef}
           data={posts}
           keyExtractor={(item) => item.postId.toString()}
           renderItem={renderPost}
@@ -341,20 +395,9 @@ export default function SocialPage() {
           ListEmptyComponent={
             <Text style={styles.emptyTitle}>No posts yet.</Text>
           }
-          onScrollToIndexFailed={(info) => {
-            // Fallback if index calculation misses due to variable heights
-            const wait = new Promise((resolve) => setTimeout(resolve, 500));
-            wait.then(() => {
-              flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: true,
-              });
-            });
-          }}
         />
       )}
 
-      {/* COMMENTS MODAL */}
       <Modal
         visible={activePostId !== null}
         animationType="slide"
@@ -392,7 +435,9 @@ export default function SocialPage() {
                     <Text style={styles.commentContent}>{item.content}</Text>
                   </View>
                   <View style={styles.commentActions}>
-                    <Text style={styles.commentDate}>Just now</Text>
+                    <Text style={styles.commentDate}>
+                      {formatDateTime(item.createdAt)}
+                    </Text>
                     <TouchableOpacity
                       onPress={() => handleLikeComment(item.commentId)}
                       style={{
@@ -456,7 +501,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#0F172A" },
   iconBtn: { padding: 4 },
-
   list: { padding: 16, paddingBottom: 100 },
   card: {
     backgroundColor: "#FFF",
@@ -469,8 +513,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#2563EB",
     backgroundColor: "#EFF6FF",
-  }, // ✅ Highlight style
-
+  },
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   avatar: {
     width: 40,
@@ -484,7 +527,6 @@ const styles = StyleSheet.create({
   body: { marginBottom: 12 },
   text: { fontSize: 15, color: "#334155", lineHeight: 22 },
   linkText: { color: "#2563EB", fontWeight: "700" },
-
   reactionsList: { flexDirection: "row", gap: 6, marginBottom: 10 },
   reactionBubble: {
     flexDirection: "row",
@@ -496,7 +538,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-
   statsRow: {
     flexDirection: "row",
     gap: 12,
@@ -515,8 +556,8 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
   reactionContainer: {
     position: "absolute",
-    bottom: 40,
-    left: 10,
+    bottom: 50,
+    left: "20%",
     flexDirection: "row",
     backgroundColor: "#FFF",
     borderRadius: 30,
@@ -528,7 +569,6 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
   },
   emojiBtn: { padding: 4 },
-
   modalContainer: { flex: 1, backgroundColor: "#FFF" },
   modalHeader: {
     flexDirection: "row",

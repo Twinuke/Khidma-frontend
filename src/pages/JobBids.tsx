@@ -91,8 +91,18 @@ export default function JobBids() {
         onPress: async () => {
           try {
             await api.put(`/Bids/${bid.bidId}/accept`);
-            Alert.alert("Success", "Bid accepted.");
-            loadBids();
+            Alert.alert("Success", "Bid accepted.", [
+              {
+                text: "OK",
+                // ✅ ADDED: Redirect to JobDetails after accepting
+                onPress: () => {
+                  navigation.navigate("JobDetails", {
+                    jobId: bid.jobId,
+                    jobTitle: jobTitle, // pass if available
+                  } as any);
+                },
+              },
+            ]);
           } catch (error) {
             Alert.alert("Error", "Failed to accept bid.");
           }

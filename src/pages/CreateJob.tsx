@@ -71,8 +71,9 @@ export default function CreateJob() {
       Alert.alert("Success", "Job posted successfully.", [
         {
           text: "View job",
+          // ✅ FIX: Redirect Client to ClientJobDetails, not JobDetails
           onPress: () =>
-            navigation.replace("JobDetails", { jobId: createdJob.jobId }),
+            navigation.replace("ClientJobDetails", { jobId: createdJob.jobId }),
         },
         { text: "OK", onPress: () => navigation.goBack(), style: "cancel" },
       ]);

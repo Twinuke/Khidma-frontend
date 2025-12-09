@@ -35,15 +35,12 @@ export default function JobDetails() {
     if (!job && jobId) {
       fetchJobDetails();
     }
-    // ✅ Mark related notifications as read when viewing this job
     markNotificationsAsRead();
   }, [jobId]);
 
   const markNotificationsAsRead = async () => {
     if (!user || !jobId) return;
     try {
-      // If Client -> Mark "BidPlaced" (Type 1) as read for this JobId
-      // If Freelancer -> Mark "BidAccepted" (Type 2) as read for this JobId
       const type = user.userType === 1 ? 1 : 2;
       await api.post(
         `/Notifications/mark-related?userId=${user.userId}&type=${type}&entityId=${jobId}`
@@ -72,7 +69,7 @@ export default function JobDetails() {
       const response = await api.post("/Chat/open", {
         user1Id: user.userId,
         user2Id: job.client?.userId,
-        jobId: job.jobId,
+        jobId: job.jobId, // ✅ Pass JobID to allow chat initiation
       });
       navigation.navigate("ChatScreen", {
         conversationId: response.data.conversationId,
@@ -109,7 +106,7 @@ export default function JobDetails() {
   const isOwner = user?.userId === job.client?.userId;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -193,6 +190,7 @@ export default function JobDetails() {
       >
         {!isOwner ? (
           <View style={{ flexDirection: "row", gap: 10 }}>
+            {/* Chat Button: Always enabled for Freelancer */}
             <TouchableOpacity
               style={[
                 styles.bidBtn,
@@ -222,8 +220,9 @@ export default function JobDetails() {
                 style={[styles.bidBtn, styles.bidBtnDisabled, { flex: 2 }]}
                 disabled={true}
               >
+                {/* ✅ Changed text from "Bid Placed" to "Already applied" */}
                 <Text style={[styles.bidBtnText, styles.bidBtnTextDisabled]}>
-                  Bid Placed
+                  Already applied
                 </Text>
               </TouchableOpacity>
             )}
@@ -269,12 +268,23 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 15,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
-  backBtn: { padding: 8 },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
+  backBtn: { padding: 4 },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+    flex: 1,
+  },
   content: { padding: 20 },
   mainInfo: { marginBottom: 24 },
   title: {

@@ -1,6 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useCallback, useEffect, useState } from "react";
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,18 +19,47 @@ import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
 export default function Connections() {
-  const { user, refreshCounts } = useUser(); // ✅ Get refreshCounts
+  const { user, refreshCounts } = useUser();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { highlightUserId } = route.params || {}; // ✅ Get ID from notification
 
   const [activeTab, setActiveTab] = useState<"FRIENDS" | "REQUESTS">("FRIENDS");
-  const [data, setData] = useState([]);
+  const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingChat, setProcessingChat] = useState<number | null>(null);
   const [requestsCount, setRequestsCount] = useState(0);
 
+  const flatListRef = useRef<FlatList>(null);
+
+  // ✅ Switch to FRIENDS tab if highlighting a new connection
+  useEffect(() => {
+    if (highlightUserId) {
+      setActiveTab("FRIENDS");
+    }
+  }, [highlightUserId]);
+
   useEffect(() => {
     fetchData();
   }, [activeTab]);
+
+  // ✅ Scroll & Highlight Logic
+  useEffect(() => {
+    if (data.length > 0 && highlightUserId && activeTab === "FRIENDS") {
+      const index = data.findIndex(
+        (item) => item.friend?.userId === highlightUserId
+      );
+      if (index !== -1) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 500);
+      }
+    }
+  }, [data, highlightUserId, activeTab]);
 
   useFocusEffect(
     useCallback(() => {
@@ -54,7 +87,6 @@ export default function Connections() {
         setData(res.data);
         setRequestsCount(res.data.length);
 
-        // ✅ Mark all Connection Requests as Read when viewing Requests tab
         await api.post(
           `/Notifications/mark-all-type?userId=${user?.userId}&type=5`
         );
@@ -102,36 +134,41 @@ export default function Connections() {
     }
   };
 
-  const renderFriend = ({ item }: { item: any }) => (
-    <View style={styles.card}>
-      <View style={styles.row}>
-        <Image
-          source={{
-            uri:
-              item.friend?.profileImageUrl || "https://via.placeholder.com/50",
-          }}
-          style={styles.avatar}
-        />
-        <View style={styles.info}>
-          <Text style={styles.name}>{item.friend?.fullName || "User"}</Text>
-          <Text style={styles.subText}>
-            Connected since {new Date(item.since).toLocaleDateString()}
-          </Text>
+  const renderFriend = ({ item }: { item: any }) => {
+    const isHighlighted = item.friend?.userId === highlightUserId;
+
+    return (
+      <View style={[styles.card, isHighlighted && styles.highlightCard]}>
+        <View style={styles.row}>
+          <Image
+            source={{
+              uri:
+                item.friend?.profileImageUrl ||
+                "https://via.placeholder.com/50",
+            }}
+            style={styles.avatar}
+          />
+          <View style={styles.info}>
+            <Text style={styles.name}>{item.friend?.fullName || "User"}</Text>
+            <Text style={styles.subText}>
+              Connected since {new Date(item.since).toLocaleDateString()}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.chatBtn}
+            onPress={() => handleChat(item.friend)}
+            disabled={processingChat === item.friend?.userId}
+          >
+            {processingChat === item.friend?.userId ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : (
+              <Ionicons name="chatbubble-ellipses" size={24} color="#2563EB" />
+            )}
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.chatBtn}
-          onPress={() => handleChat(item.friend)}
-          disabled={processingChat === item.friend?.userId}
-        >
-          {processingChat === item.friend?.userId ? (
-            <ActivityIndicator size="small" color="#2563EB" />
-          ) : (
-            <Ionicons name="chatbubble-ellipses" size={24} color="#2563EB" />
-          )}
-        </TouchableOpacity>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderRequest = ({ item }: { item: any }) => (
     <View style={styles.card}>
@@ -169,14 +206,12 @@ export default function Connections() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="arrow-back" size={24} color="#0F172A" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.iconBtn}
+        >
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Connections</Text>
         <View style={styles.headerRight} />
       </View>
@@ -218,6 +253,7 @@ export default function Connections() {
         />
       ) : (
         <FlatList
+          ref={flatListRef}
           data={data}
           keyExtractor={(item: any) => item.connectionId.toString()}
           renderItem={activeTab === "FRIENDS" ? renderFriend : renderRequest}
@@ -229,6 +265,15 @@ export default function Connections() {
                 : "No pending requests."}
             </Text>
           }
+          onScrollToIndexFailed={(info) => {
+            const wait = new Promise((resolve) => setTimeout(resolve, 500));
+            wait.then(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+              });
+            });
+          }}
         />
       )}
     </View>
@@ -258,7 +303,6 @@ const styles = StyleSheet.create({
   },
   headerRight: { flex: 1, alignItems: "flex-end" },
   iconBtn: { padding: 4 },
-
   tabs: {
     flexDirection: "row",
     backgroundColor: "#FFF",
@@ -274,7 +318,6 @@ const styles = StyleSheet.create({
   activeTab: { borderColor: "#2563EB" },
   tabText: { fontSize: 14, color: "#64748B", fontWeight: "600" },
   activeTabText: { color: "#2563EB" },
-
   card: {
     backgroundColor: "#FFF",
     padding: 16,
@@ -282,6 +325,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     shadowOpacity: 0.05,
     elevation: 1,
+  },
+  // ✅ Highlight style
+  highlightCard: {
+    borderWidth: 2,
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
   },
   row: { flexDirection: "row", alignItems: "center" },
   avatar: {

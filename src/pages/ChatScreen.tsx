@@ -23,11 +23,32 @@ export default function ChatScreen() {
   const { connection, connectToChat } = useChat();
   const insets = useSafeAreaInsets();
 
-  const { conversationId, otherUser } = route.params;
+  const { conversationId, otherUser: paramOtherUser } = route.params;
+  const [otherUser, setOtherUser] = useState(paramOtherUser); // ✅ State for header user
 
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
   const flatListRef = useRef<FlatList>(null);
+
+  // ✅ Fetch header info if missing (from Notification)
+  useEffect(() => {
+    if (!otherUser && conversationId) {
+      fetchConversationDetails();
+    }
+  }, [conversationId]);
+
+  const fetchConversationDetails = async () => {
+    try {
+      // Fetch details to know who we are chatting with
+      const res = await api.get(`/Chat/${conversationId}`);
+      // Backend returns User1 and User2. We need the one that isn't 'user.userId'
+      const conv = res.data;
+      const friend = conv.user1Id === user?.userId ? conv.user2 : conv.user1;
+      setOtherUser(friend);
+    } catch (e) {
+      console.log("Error fetching conversation details:", e);
+    }
+  };
 
   useEffect(() => {
     if (!connection) connectToChat();
@@ -36,7 +57,7 @@ export default function ChatScreen() {
     if (connection) {
       connection.invoke("JoinConversation", conversationId.toString());
 
-      connection.on("ReceiveMessage", (msg) => {
+      connection.on("ReceiveMessage", (msg: any) => {
         setMessages((prev) => [...prev, msg]);
         scrollToBottom();
       });
@@ -62,13 +83,13 @@ export default function ChatScreen() {
     try {
       await connection.invoke(
         "SendMessage",
-        parseInt(conversationId),
+        Number(conversationId),
         user?.userId,
         text
       );
       setText("");
     } catch (e) {
-      console.error(e);
+      console.error("Send Error:", e);
     }
   };
 
@@ -93,7 +114,7 @@ export default function ChatScreen() {
           >
             {item.content}
           </Text>
-          <Text style={styles.timeText}>
+          <Text style={[styles.timeText, isMe ? { color: "#E2E8F0" } : null]}>
             {new Date(item.sentAt).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
@@ -105,17 +126,16 @@ export default function ChatScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
+        {/* ✅ Dynamic Header Title */}
         <Text style={styles.headerTitle}>{otherUser?.fullName || "Chat"}</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      {/* ✅ Wrap content in KeyboardAvoidingView with flex: 1 */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -124,26 +144,21 @@ export default function ChatScreen() {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item.messageId?.toString() + Math.random()}
+          keyExtractor={(item) =>
+            item.messageId?.toString() || Math.random().toString()
+          }
           renderItem={renderMessage}
           contentContainerStyle={styles.list}
+          onContentSizeChange={scrollToBottom}
         />
 
-        {/* Input Area */}
-        <View
-          style={[
-            styles.inputContainer,
-            {
-              paddingBottom:
-                Platform.OS === "android" ? 10 : Math.max(insets.bottom, 10),
-            },
-          ]}
-        >
+        <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
             value={text}
             onChangeText={setText}
             placeholder="Type a message..."
+            multiline
           />
           <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
             <Ionicons name="send" size={20} color="#FFF" />
@@ -165,18 +180,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#E2E8F0",
   },
-  headerTitle: { fontSize: 18, fontWeight: "bold" },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
   list: { padding: 16, paddingBottom: 20 },
   bubbleWrapper: { marginBottom: 12, flexDirection: "row" },
   myWrapper: { justifyContent: "flex-end" },
   otherWrapper: { justifyContent: "flex-start" },
   bubble: { maxWidth: "80%", padding: 12, borderRadius: 16 },
   myBubble: { backgroundColor: "#2563EB", borderBottomRightRadius: 2 },
-  otherBubble: { backgroundColor: "#E2E8F0", borderBottomLeftRadius: 2 },
-  msgText: { fontSize: 16 },
+  otherBubble: {
+    backgroundColor: "#FFF",
+    borderBottomLeftRadius: 2,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  msgText: { fontSize: 15, lineHeight: 22 },
   myText: { color: "#FFF" },
-  otherText: { color: "#000" },
-  timeText: { fontSize: 10, marginTop: 4, alignSelf: "flex-end", opacity: 0.7 },
+  otherText: { color: "#1E293B" },
+  timeText: {
+    fontSize: 10,
+    marginTop: 4,
+    alignSelf: "flex-end",
+    opacity: 0.7,
+    color: "#64748B",
+  },
   inputContainer: {
     flexDirection: "row",
     padding: 12,
@@ -192,6 +218,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     marginRight: 10,
+    maxHeight: 100,
   },
   sendBtn: { backgroundColor: "#2563EB", padding: 10, borderRadius: 20 },
 });

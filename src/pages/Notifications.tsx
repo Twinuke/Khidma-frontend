@@ -64,7 +64,7 @@ export default function Notifications() {
     );
     setNotifications(updated);
 
-    // 2. Mark as read API
+    // 2. Mark as read
     try {
       await api.put(`/Notifications/${item.notificationId}/read`);
       refreshCounts();
@@ -75,24 +75,46 @@ export default function Notifications() {
     // 3. Navigation Logic
     switch (item.type) {
       case 1: // Bid Placed
-        // ✅ Works for BOTH Client (Received Bid) and Freelancer (Placed Bid)
         if (item.relatedEntityId) {
-          navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+          if (user?.userType === 1) {
+            navigation.navigate("ClientJobDetails", {
+              jobId: item.relatedEntityId,
+            });
+          } else {
+            navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+          }
         }
         break;
+
       case 2: // Bid Accepted
-        // ✅ Freelancer goes to JobDetails
         if (item.relatedEntityId) {
           navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
         }
         break;
+
+      // ✅ UPDATED: Chat Message is now Type 9
+      case 9:
+        if (item.relatedEntityId) {
+          navigation.navigate("ChatScreen", {
+            conversationId: item.relatedEntityId,
+          });
+        }
+        break;
+
       case 5: // Connection Request
         navigation.navigate("Connections");
         break;
+
+      // ✅ UPDATED: Connection Accepted is Type 10
+      case 10:
+        navigation.navigate("Connections", {
+          highlightUserId: item.relatedEntityId,
+        });
+        break;
+
       case 6: // Like
       case 7: // Comment
       case 8: // Reaction
-        // ✅ Pass the specific Post ID to scroll to
         if (item.relatedEntityId) {
           navigation.navigate("SocialPage", {
             targetPostId: item.relatedEntityId,
@@ -101,8 +123,18 @@ export default function Notifications() {
           navigation.navigate("SocialPage");
         }
         break;
+
       default:
-        console.log("Unknown notification type");
+        // Handle generic system messages (Type 4 or 0)
+        if (item.relatedEntityId && (item.type === 0 || item.type === 4)) {
+          if (user?.userType === 1) {
+            navigation.navigate("ClientJobDetails", {
+              jobId: item.relatedEntityId,
+            });
+          } else {
+            navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+          }
+        }
     }
   };
 
@@ -112,8 +144,12 @@ export default function Notifications() {
         return <Ionicons name="pricetag" size={24} color="#3B82F6" />;
       case 2:
         return <Ionicons name="checkmark-circle" size={24} color="#10B981" />;
+      case 9:
+        return <Ionicons name="chatbubbles" size={24} color="#2563EB" />; // ✅ Chat (Type 9)
       case 5:
         return <Ionicons name="person-add" size={24} color="#8B5CF6" />;
+      case 10:
+        return <Ionicons name="people" size={24} color="#059669" />; // ✅ Connected (Type 10)
       case 6:
         return <Ionicons name="heart" size={24} color="#EF4444" />;
       case 7:
@@ -212,7 +248,6 @@ const styles = StyleSheet.create({
   },
   headerRight: { flex: 1, alignItems: "flex-end" },
   iconBtn: { padding: 4 },
-
   list: { padding: 16 },
   card: {
     flexDirection: "row",
