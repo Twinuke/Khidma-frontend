@@ -3,7 +3,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,70 +11,103 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BidForm } from "../components/BidForm";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
+import { Job } from "../types/job";
 
 export default function JobDetails() {
-  const { user } = useUser();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { user, refreshCounts } = useUser();
   const insets = useSafeAreaInsets();
 
-  // JobId passed from Navigation (Notifications, Explore, etc.)
-  const { jobId } = route.params;
+  const { jobId, hasPlacedBid: paramHasBid } = route.params || {};
+  const initialJobData = route.params?.jobData as Job;
 
-  const [job, setJob] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [hasApplied, setHasApplied] = useState(false); // ✅ Track application status
+  const [job, setJob] = useState<Job | null>(initialJobData || null);
+  const [loading, setLoading] = useState(!initialJobData);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const hasPlacedBid = paramHasBid || job?.hasPlacedBid || false;
 
   useEffect(() => {
-    fetchJobDetails();
+    if (!job && jobId) {
+      fetchJobDetails();
+    }
+    markNotificationsAsRead();
   }, [jobId]);
+
+  const markNotificationsAsRead = async () => {
+    if (!user || !jobId) return;
+    try {
+      const type = user.userType === 1 ? 1 : 2;
+      await api.post(
+        `/Notifications/mark-related?userId=${user.userId}&type=${type}&entityId=${jobId}`
+      );
+      refreshCounts();
+    } catch (e) {
+      console.log(e);
+    }
+  };
 
   const fetchJobDetails = async () => {
     try {
-      // ✅ Pass userId to backend to check if we already bid
-      const endpoint = user?.userId
-        ? `/Jobs/${jobId}/${user.userId}`
-        : `/Jobs/${jobId}`;
-
-      const res = await api.get(endpoint);
-      setJob(res.data);
-      setHasApplied(res.data.hasBid); // ✅ Set status from backend
-    } catch (e) {
-      console.log("Error fetching job:", e);
-      Alert.alert("Error", "Could not load job details.");
-      navigation.goBack();
+      setLoading(true);
+      const response = await api.get(`/Jobs/${jobId}`);
+      setJob(response.data);
+    } catch (error) {
+      console.log("Error fetching job details:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApply = () => {
-    if (!user) {
-      Alert.alert("Login Required", "Please login to apply for jobs.");
-      return;
+  const handleStartChat = async () => {
+    if (!user || !job) return;
+    try {
+      const response = await api.post("/Chat/open", {
+        user1Id: user.userId,
+        user2Id: job.client?.userId,
+        jobId: job.jobId, // ✅ Pass JobID to allow chat initiation
+      });
+      navigation.navigate("ChatScreen", {
+        conversationId: response.data.conversationId,
+        otherUser: job.client,
+      });
+    } catch (e) {
+      console.log("Chat Error:", e);
     }
-
-    // ✅ REVERTED: Using standard navigation.
-    // Ensure "BidForm" is registered in your navigation stack (e.g., in app/(tabs)/_layout.tsx or app/_layout.tsx)
-    navigation.navigate("BidForm", { jobId: job.jobId, jobTitle: job.title });
   };
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#2563EB" />
       </View>
     );
   }
 
-  if (!job) return null;
+  if (!job) {
+    return (
+      <View style={styles.centerContainer}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorText}>Job not found or deleted.</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const isOwner = user?.userId === job.client?.userId;
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+    <View style={styles.container}>
+      <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
@@ -86,160 +119,260 @@ export default function JobDetails() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>{job.title}</Text>
-
-        <View style={styles.metaRow}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{job.location || "Remote"}</Text>
-          </View>
-          <Text style={styles.date}>
+        <View style={styles.mainInfo}>
+          <Text style={styles.title}>{job.title}</Text>
+          <Text style={styles.posted}>
             Posted {new Date(job.createdAt).toLocaleDateString()}
           </Text>
+
+          <View style={styles.budgetRow}>
+            <Text style={styles.budgetLabel}>Budget:</Text>
+            <Text style={styles.budgetAmount}>${job.budget}</Text>
+          </View>
         </View>
 
-        <Text style={styles.price}>${job.budget}</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Description</Text>
-          <Text style={styles.description}>{job.description}</Text>
-        </View>
-
-        {/* Skills */}
-        {job.skills && job.skills.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Skills Required</Text>
-            <View style={styles.skillRow}>
-              {job.skills.map((skill: any) => (
-                <View key={skill.skillId} style={styles.skillBadge}>
-                  <Text style={styles.skillText}>{skill.name}</Text>
-                </View>
-              ))}
-            </View>
+        {hasPlacedBid && (
+          <View style={styles.bidPlacedBanner}>
+            <Ionicons name="checkmark-circle" size={20} color="#15803D" />
+            <Text style={styles.bidPlacedText}>
+              You have already placed a bid on this job.
+            </Text>
           </View>
         )}
 
-        {/* Client Info */}
-        <View style={styles.clientCard}>
-          <Ionicons name="person-circle-outline" size={40} color="#64748B" />
-          <View style={{ marginLeft: 12 }}>
-            <Text style={styles.clientName}>
-              {job.client?.fullName || "Client"}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Description</Text>
+          <Text style={styles.descText}>{job.description}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Details</Text>
+          <View style={styles.detailItem}>
+            <Ionicons name="folder-outline" size={18} color="#64748B" />
+            <Text style={styles.detailText}>
+              Category: {job.category || "N/A"}
             </Text>
-            <Text style={styles.clientLabel}>Job Poster</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="globe-outline" size={18} color="#64748B" />
+            <Text style={styles.detailText}>
+              {job.isRemote ? "Remote" : "On-Site"}
+            </Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="ribbon-outline" size={18} color="#64748B" />
+            <Text style={styles.detailText}>
+              {job.experienceLevel || "Intermediate"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.clientSection}>
+          <Text style={styles.sectionTitle}>About the Client</Text>
+          <View style={styles.clientRow}>
+            <View style={styles.avatarPlaceholder}>
+              <Text style={{ color: "#2563EB", fontWeight: "bold" }}>
+                {job.client?.fullName?.[0] || "C"}
+              </Text>
+            </View>
+            <View>
+              <Text style={styles.clientName}>
+                {job.client?.fullName || "Client"}
+              </Text>
+              <Text style={styles.clientMeta}>Verified Client</Text>
+            </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* Footer Action Button */}
-      <View style={styles.footer}>
-        {hasApplied ? (
-          // ✅ ALREADY APPLIED STATE
-          <TouchableOpacity
-            style={[styles.applyBtn, styles.disabledBtn]}
-            disabled
-          >
-            <Ionicons
-              name="checkmark-circle"
-              size={20}
-              color="#FFF"
-              style={{ marginRight: 8 }}
-            />
-            <Text style={styles.applyBtnText}>Already Applied</Text>
-          </TouchableOpacity>
+      <View
+        style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}
+      >
+        {!isOwner ? (
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {/* Chat Button: Always enabled for Freelancer */}
+            <TouchableOpacity
+              style={[
+                styles.bidBtn,
+                {
+                  flex: 1,
+                  backgroundColor: "#FFF",
+                  borderWidth: 1,
+                  borderColor: "#2563EB",
+                },
+              ]}
+              onPress={handleStartChat}
+            >
+              <Text style={[styles.bidBtnText, { color: "#2563EB" }]}>
+                Chat
+              </Text>
+            </TouchableOpacity>
+
+            {!hasPlacedBid ? (
+              <TouchableOpacity
+                style={[styles.bidBtn, { flex: 2 }]}
+                onPress={() => setModalVisible(true)}
+              >
+                <Text style={styles.bidBtnText}>Apply Now</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.bidBtn, styles.bidBtnDisabled, { flex: 2 }]}
+                disabled={true}
+              >
+                {/* ✅ Changed text from "Bid Placed" to "Already applied" */}
+                <Text style={[styles.bidBtnText, styles.bidBtnTextDisabled]}>
+                  Already applied
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         ) : (
-          // ✅ APPLY NOW STATE
-          <TouchableOpacity onPress={handleApply} style={styles.applyBtn}>
-            <Text style={styles.applyBtnText}>Apply Now</Text>
-          </TouchableOpacity>
+          <Text style={styles.ownJobText}>You posted this job</Text>
         )}
       </View>
+
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          {user ? (
+            <BidForm
+              jobId={job.jobId}
+              freelancerId={user.userId}
+              onCancel={() => setModalVisible(false)}
+              onSuccess={() => {
+                setModalVisible(false);
+                navigation.goBack();
+              }}
+            />
+          ) : (
+            <ActivityIndicator size="large" color="#FFF" />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
-  center: { justifyContent: "center", alignItems: "center" },
+  container: { flex: 1, backgroundColor: "#FFF" },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 15,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
   },
-  backBtn: { padding: 8 },
-  headerTitle: { fontSize: 18, fontWeight: "600", color: "#0F172A" },
-  content: { padding: 20 },
-  title: {
-    fontSize: 24,
+  backBtn: { padding: 4 },
+  headerTitle: {
+    fontSize: 20,
     fontWeight: "700",
     color: "#0F172A",
-    marginBottom: 12,
+    textAlign: "center",
+    flex: 1,
   },
-  metaRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
-  badge: {
-    backgroundColor: "#DBEAFE",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  badgeText: { color: "#2563EB", fontSize: 12, fontWeight: "600" },
-  date: { color: "#64748B", fontSize: 14 },
-  price: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#2563EB",
-    marginBottom: 24,
-  },
-  section: { marginBottom: 24 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+  content: { padding: 20 },
+  mainInfo: { marginBottom: 24 },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
     color: "#0F172A",
     marginBottom: 8,
   },
-  description: { fontSize: 15, lineHeight: 24, color: "#334155" },
-  skillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  skillBadge: {
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  skillText: { color: "#475569", fontSize: 13 },
-  clientCard: {
+  posted: { color: "#64748B", marginBottom: 16 },
+  budgetRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF",
-    padding: 16,
+    backgroundColor: "#F1F5F9",
+    padding: 12,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    alignSelf: "flex-start",
+  },
+  budgetLabel: { marginRight: 8, color: "#64748B" },
+  budgetAmount: { fontSize: 18, fontWeight: "700", color: "#2563EB" },
+  bidPlacedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DCFCE7",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  bidPlacedText: { color: "#15803D", fontWeight: "600", marginLeft: 8 },
+  section: { marginBottom: 24 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#0F172A",
+    marginBottom: 12,
+  },
+  descText: { fontSize: 15, lineHeight: 24, color: "#334155" },
+  detailItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    gap: 10,
+  },
+  detailText: { fontSize: 15, color: "#475569" },
+  clientSection: { backgroundColor: "#F8FAFC", padding: 16, borderRadius: 16 },
+  clientRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#DBEAFE",
+    justifyContent: "center",
+    alignItems: "center",
   },
   clientName: { fontSize: 16, fontWeight: "600", color: "#0F172A" },
-  clientLabel: { fontSize: 14, color: "#64748B" },
+  clientMeta: { color: "#64748B", fontSize: 13 },
   footer: {
-    padding: 16,
-    backgroundColor: "#FFF",
+    padding: 20,
     borderTopWidth: 1,
     borderColor: "#E2E8F0",
+    backgroundColor: "#FFF",
   },
-  applyBtn: {
+  bidBtn: {
     backgroundColor: "#2563EB",
-    paddingVertical: 16,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 16,
     alignItems: "center",
+  },
+  bidBtnDisabled: { backgroundColor: "#E2E8F0" },
+  bidBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  bidBtnTextDisabled: { color: "#94A3B8" },
+  ownJobText: { textAlign: "center", color: "#64748B", fontStyle: "italic" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
-    flexDirection: "row",
+    padding: 20,
   },
-  disabledBtn: {
-    backgroundColor: "#94A3B8", // Gray for disabled
+  errorText: {
+    fontSize: 16,
+    color: "#64748B",
+    marginTop: 12,
+    marginBottom: 20,
   },
-  applyBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  backButton: {
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  backButtonText: { color: "#FFF", fontWeight: "600" },
 });
