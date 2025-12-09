@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,40 +12,42 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { BidForm } from "../components/BidForm"; // ✅ Import existing component
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
 export default function JobDetails() {
   const { user } = useUser();
-  const route = useRoute<any>();
-  const navigation = useNavigation<any>();
+  const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
 
-  // JobId passed from Navigation (Notifications, Explore, etc.)
-  const { jobId } = route.params;
+  const jobId = params.jobId;
 
   const [job, setJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [hasApplied, setHasApplied] = useState(false); // ✅ Track application status
+  const [hasApplied, setHasApplied] = useState(false);
+  const [isBidModalVisible, setBidModalVisible] = useState(false); // ✅ Control Modal
 
   useEffect(() => {
-    fetchJobDetails();
-  }, [jobId]);
+    if (jobId) {
+      fetchJobDetails();
+    }
+  }, [jobId, user?.userId]);
 
   const fetchJobDetails = async () => {
     try {
-      // ✅ Pass userId to backend to check if we already bid
       const endpoint = user?.userId
         ? `/Jobs/${jobId}/${user.userId}`
         : `/Jobs/${jobId}`;
 
       const res = await api.get(endpoint);
       setJob(res.data);
-      setHasApplied(res.data.hasBid); // ✅ Set status from backend
+      setHasApplied(res.data.hasBid);
     } catch (e) {
       console.log("Error fetching job:", e);
       Alert.alert("Error", "Could not load job details.");
-      navigation.goBack();
+      router.back();
     } finally {
       setLoading(false);
     }
@@ -55,10 +58,13 @@ export default function JobDetails() {
       Alert.alert("Login Required", "Please login to apply for jobs.");
       return;
     }
+    // ✅ Open Modal instead of navigating
+    setBidModalVisible(true);
+  };
 
-    // ✅ REVERTED: Using standard navigation.
-    // Ensure "BidForm" is registered in your navigation stack (e.g., in app/(tabs)/_layout.tsx or app/_layout.tsx)
-    navigation.navigate("BidForm", { jobId: job.jobId, jobTitle: job.title });
+  const handleBidSuccess = () => {
+    setBidModalVisible(false);
+    fetchJobDetails(); // ✅ Refresh data to update button state to "Already Applied"
   };
 
   if (loading) {
@@ -75,10 +81,7 @@ export default function JobDetails() {
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Job Details</Text>
@@ -133,7 +136,6 @@ export default function JobDetails() {
       {/* Footer Action Button */}
       <View style={styles.footer}>
         {hasApplied ? (
-          // ✅ ALREADY APPLIED STATE
           <TouchableOpacity
             style={[styles.applyBtn, styles.disabledBtn]}
             disabled
@@ -147,12 +149,39 @@ export default function JobDetails() {
             <Text style={styles.applyBtnText}>Already Applied</Text>
           </TouchableOpacity>
         ) : (
-          // ✅ APPLY NOW STATE
           <TouchableOpacity onPress={handleApply} style={styles.applyBtn}>
             <Text style={styles.applyBtnText}>Apply Now</Text>
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ✅ Bid Form Modal */}
+      <Modal
+        visible={isBidModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet" // Looks great on iOS, falls back gracefully on Android
+        onRequestClose={() => setBidModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          {/* Close Button Header for Modal */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Submit Proposal</Text>
+            <TouchableOpacity onPress={() => setBidModalVisible(false)}>
+              <Ionicons name="close" size={28} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Embed the BidForm Component */}
+          <View style={{ flex: 1 }}>
+            <BidForm
+              jobId={job.jobId}
+              freelancerId={user?.userId || 0}
+              onSuccess={handleBidSuccess}
+              onCancel={() => setBidModalVisible(false)}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -239,7 +268,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   disabledBtn: {
-    backgroundColor: "#94A3B8", // Gray for disabled
+    backgroundColor: "#94A3B8",
   },
   applyBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  // Modal Specific Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
 });
