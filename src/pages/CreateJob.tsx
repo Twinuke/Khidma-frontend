@@ -1,9 +1,10 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
-  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -31,7 +32,7 @@ export default function CreateJob() {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [budget, setBudget] = useState("");
-  const [deadline, setDeadline] = useState(""); // simple text for now (YYYY-MM-DD)
+  const [deadline, setDeadline] = useState("");
   const [isRemote, setIsRemote] = useState(true);
   const [experienceLevel, setExperienceLevel] =
     useState<(typeof EXPERIENCE_LEVELS)[number]>("Intermediate");
@@ -42,12 +43,10 @@ export default function CreateJob() {
       Alert.alert("Error", "Only clients can post jobs.");
       return;
     }
-
     if (!title || !description || !budget) {
       Alert.alert("Error", "Title, description, and budget are required.");
       return;
     }
-
     const parsedBudget = Number(budget);
     if (Number.isNaN(parsedBudget) || parsedBudget <= 0) {
       Alert.alert("Error", "Budget must be a positive number.");
@@ -55,7 +54,6 @@ export default function CreateJob() {
     }
 
     setLoading(true);
-
     try {
       const payload = {
         clientId: user.userId,
@@ -67,7 +65,6 @@ export default function CreateJob() {
         isRemote,
         experienceLevel,
       };
-
       const response = await api.post("/Jobs", payload);
       const createdJob = response.data;
 
@@ -77,129 +74,150 @@ export default function CreateJob() {
           onPress: () =>
             navigation.replace("JobDetails", { jobId: createdJob.jobId }),
         },
-        {
-          text: "OK",
-          onPress: () => navigation.goBack(),
-          style: "cancel",
-        },
+        { text: "OK", onPress: () => navigation.goBack(), style: "cancel" },
       ]);
     } catch (error) {
       console.log("Create Job Error:", error);
-      Alert.alert("Error", "Failed to create job. Check your connection.");
+      Alert.alert("Error", "Failed to create job.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>Post a Job</Text>
-
-      <Text style={styles.label}>Title</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Short job title"
-        value={title}
-        onChangeText={setTitle}
-      />
-
-      <Text style={styles.label}>Description</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Describe what you need done"
-        value={description}
-        onChangeText={setDescription}
-        multiline
-      />
-
-      <Text style={styles.label}>Category</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Example: Development, Design, Marketing"
-        value={category}
-        onChangeText={setCategory}
-      />
-
-      <Text style={styles.label}>Budget (USD)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Example: 100"
-        value={budget}
-        onChangeText={setBudget}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Deadline (optional, YYYY-MM-DD)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="2025-12-31"
-        value={deadline}
-        onChangeText={setDeadline}
-      />
-
-      <View style={styles.row}>
-        <Text style={styles.label}>Remote job</Text>
-        <Switch value={isRemote} onValueChange={setIsRemote} />
-      </View>
-
-      <Text style={styles.label}>Experience level</Text>
-      <View style={styles.levelRow}>
-        {EXPERIENCE_LEVELS.map((level) => (
+    <View style={styles.container}>
+      {/* ✅ Standardized Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
           <TouchableOpacity
-            key={level}
-            style={[
-              styles.levelChip,
-              experienceLevel === level && styles.levelChipActive,
-            ]}
-            onPress={() => setExperienceLevel(level)}
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
           >
-            <Text
-              style={[
-                styles.levelChipText,
-                experienceLevel === level && styles.levelChipTextActive,
-              ]}
-            >
-              {level}
-            </Text>
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
           </TouchableOpacity>
-        ))}
+        </View>
+        <Text style={styles.headerTitle}>Post a Job</Text>
+        <View style={styles.headerRight} />
       </View>
 
-      <TouchableOpacity
-        style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
-        onPress={handleSubmit}
-        disabled={loading}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.submitText}>
-          {loading ? "Posting..." : "Post Job"}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Text style={styles.label}>Title</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Short job title"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <Text style={styles.label}>Description</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Describe what you need done"
+          value={description}
+          onChangeText={setDescription}
+          multiline
+        />
+
+        <Text style={styles.label}>Category</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Development, Design"
+          value={category}
+          onChangeText={setCategory}
+        />
+
+        <Text style={styles.label}>Budget (USD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="100"
+          value={budget}
+          onChangeText={setBudget}
+          keyboardType="numeric"
+        />
+
+        <Text style={styles.label}>Deadline (YYYY-MM-DD)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Optional"
+          value={deadline}
+          onChangeText={setDeadline}
+        />
+
+        <View style={styles.row}>
+          <Text style={styles.label}>Remote job</Text>
+          <Switch value={isRemote} onValueChange={setIsRemote} />
+        </View>
+
+        <Text style={styles.label}>Experience level</Text>
+        <View style={styles.levelRow}>
+          {EXPERIENCE_LEVELS.map((level) => (
+            <TouchableOpacity
+              key={level}
+              style={[
+                styles.levelChip,
+                experienceLevel === level && styles.levelChipActive,
+              ]}
+              onPress={() => setExperienceLevel(level)}
+            >
+              <Text
+                style={[
+                  styles.levelChipText,
+                  experienceLevel === level && styles.levelChipTextActive,
+                ]}
+              >
+                {level}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+          onPress={handleSubmit}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.submitText}>Post Job</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: 20,
-    paddingTop: Platform.OS === "android" ? 50 : 60,
-    backgroundColor: "#F8FAFC",
-    flexGrow: 1,
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+
+  // ✅ Standard Header
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
-  title: {
-    fontSize: 28,
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
     fontWeight: "700",
-    marginBottom: 20,
     color: "#0F172A",
+    textAlign: "center",
   },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 6,
-    color: "#475569",
-  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
+  content: { padding: 20, paddingBottom: 40 },
+  label: { fontSize: 14, fontWeight: "600", marginBottom: 6, color: "#475569" },
   input: {
     backgroundColor: "#FFF",
     borderRadius: 12,
@@ -209,21 +227,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 16,
   },
-  textArea: {
-    height: 120,
-    textAlignVertical: "top",
-  },
+  textArea: { height: 120, textAlignVertical: "top" },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 16,
   },
-  levelRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 24,
-  },
+  levelRow: { flexDirection: "row", gap: 8, marginBottom: 24 },
   levelChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -232,18 +243,9 @@ const styles = StyleSheet.create({
     borderColor: "#CBD5F5",
     backgroundColor: "#EFF6FF",
   },
-  levelChipActive: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
-  },
-  levelChipText: {
-    fontSize: 13,
-    color: "#1E293B",
-  },
-  levelChipTextActive: {
-    color: "#FFF",
-    fontWeight: "700",
-  },
+  levelChipActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
+  levelChipText: { fontSize: 13, color: "#1E293B" },
+  levelChipTextActive: { color: "#FFF", fontWeight: "700" },
   submitBtn: {
     backgroundColor: "#2563EB",
     paddingVertical: 14,
@@ -251,12 +253,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  submitBtnDisabled: {
-    opacity: 0.7,
-  },
-  submitText: {
-    color: "#FFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  submitBtnDisabled: { opacity: 0.7 },
+  submitText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
 });

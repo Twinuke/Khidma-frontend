@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // ✅ Import Safe Area
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BidForm } from "../components/BidForm";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
@@ -19,8 +19,8 @@ import { Job } from "../types/job";
 export default function JobDetails() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { user } = useUser();
-  const insets = useSafeAreaInsets(); // ✅ Get Insets
+  const { user, refreshCounts } = useUser();
+  const insets = useSafeAreaInsets();
 
   const { jobId, hasPlacedBid: paramHasBid } = route.params || {};
   const initialJobData = route.params?.jobData as Job;
@@ -35,7 +35,24 @@ export default function JobDetails() {
     if (!job && jobId) {
       fetchJobDetails();
     }
+    // ✅ Mark related notifications as read when viewing this job
+    markNotificationsAsRead();
   }, [jobId]);
+
+  const markNotificationsAsRead = async () => {
+    if (!user || !jobId) return;
+    try {
+      // If Client -> Mark "BidPlaced" (Type 1) as read for this JobId
+      // If Freelancer -> Mark "BidAccepted" (Type 2) as read for this JobId
+      const type = user.userType === 1 ? 1 : 2;
+      await api.post(
+        `/Notifications/mark-related?userId=${user.userId}&type=${type}&entityId=${jobId}`
+      );
+      refreshCounts();
+    } catch (e) {
+      console.log(e);
+    }
+  };
 
   const fetchJobDetails = async () => {
     try {
@@ -57,11 +74,8 @@ export default function JobDetails() {
         user2Id: job.client?.userId,
         jobId: job.jobId,
       });
-
-      const conversation = response.data;
-
       navigation.navigate("ChatScreen", {
-        conversationId: conversation.conversationId,
+        conversationId: response.data.conversationId,
         otherUser: job.client,
       });
     } catch (e) {
@@ -95,7 +109,6 @@ export default function JobDetails() {
   const isOwner = user?.userId === job.client?.userId;
 
   return (
-    // ✅ Replaced SafeAreaView with View + Dynamic Padding
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
@@ -175,7 +188,6 @@ export default function JobDetails() {
         </View>
       </ScrollView>
 
-      {/* ✅ Fixed Footer with Dynamic Bottom Padding */}
       <View
         style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}
       >
@@ -221,7 +233,6 @@ export default function JobDetails() {
         )}
       </View>
 
-      {/* Bid Modal */}
       <Modal
         visible={modalVisible}
         transparent
@@ -319,14 +330,12 @@ const styles = StyleSheet.create({
   },
   clientName: { fontSize: 16, fontWeight: "600", color: "#0F172A" },
   clientMeta: { color: "#64748B", fontSize: 13 },
-
   footer: {
     padding: 20,
     borderTopWidth: 1,
     borderColor: "#E2E8F0",
     backgroundColor: "#FFF",
   },
-
   bidBtn: {
     backgroundColor: "#2563EB",
     padding: 16,

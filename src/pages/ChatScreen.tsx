@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context"; // ✅ Import this
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
 import { useChat } from "../context/ChatContext";
 import { useUser } from "../context/UserContext";
@@ -21,9 +21,8 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const { user } = useUser();
   const { connection, connectToChat } = useChat();
-  const insets = useSafeAreaInsets(); // ✅ Get safe area insets
+  const insets = useSafeAreaInsets();
 
-  // Params passed from navigation
   const { conversationId, otherUser } = route.params;
 
   const [messages, setMessages] = useState<any[]>([]);
@@ -106,8 +105,8 @@ export default function ChatScreen() {
   };
 
   return (
-    // ✅ Replaced SafeAreaView with View + paddingTop to handle top inset manually
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
@@ -116,27 +115,27 @@ export default function ChatScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.messageId?.toString() + Math.random()}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.list}
-      />
-
+      {/* ✅ Wrap content in KeyboardAvoidingView with flex: 1 */}
       <KeyboardAvoidingView
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        {/* ✅ Added dynamic paddingBottom to fix Android Nav Bar overlap */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.messageId?.toString() + Math.random()}
+          renderItem={renderMessage}
+          contentContainerStyle={styles.list}
+        />
+
+        {/* Input Area */}
         <View
           style={[
             styles.inputContainer,
             {
               paddingBottom:
-                Platform.OS === "android"
-                  ? insets.bottom + 10
-                  : Math.max(insets.bottom, 10),
+                Platform.OS === "android" ? 10 : Math.max(insets.bottom, 10),
             },
           ]}
         >
@@ -178,8 +177,6 @@ const styles = StyleSheet.create({
   myText: { color: "#FFF" },
   otherText: { color: "#000" },
   timeText: { fontSize: 10, marginTop: 4, alignSelf: "flex-end", opacity: 0.7 },
-
-  // Updated Input Container
   inputContainer: {
     flexDirection: "row",
     padding: 12,
@@ -187,7 +184,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#E2E8F0",
     alignItems: "center",
-    // Padding bottom is now handled inline
   },
   input: {
     flex: 1,

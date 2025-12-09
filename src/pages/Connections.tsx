@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,24 +15,21 @@ import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
 export default function Connections() {
-  const { user } = useUser();
+  const { user, refreshCounts } = useUser(); // ✅ Get refreshCounts
   const navigation = useNavigation<any>();
 
   const [activeTab, setActiveTab] = useState<"FRIENDS" | "REQUESTS">("FRIENDS");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingChat, setProcessingChat] = useState<number | null>(null);
-
-  // ✅ NEW: Requests Count State
   const [requestsCount, setRequestsCount] = useState(0);
 
   useEffect(() => {
     fetchData();
   }, [activeTab]);
 
-  // ✅ Fetch count on focus too, so it updates when coming from Notifications
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       fetchRequestsCount();
     }, [])
   );
@@ -55,7 +52,13 @@ export default function Connections() {
       } else {
         const res = await api.get(`/Social/requests/${user?.userId}`);
         setData(res.data);
-        setRequestsCount(res.data.length); // Update count if we are here
+        setRequestsCount(res.data.length);
+
+        // ✅ Mark all Connection Requests as Read when viewing Requests tab
+        await api.post(
+          `/Notifications/mark-all-type?userId=${user?.userId}&type=5`
+        );
+        refreshCounts();
       }
     } catch (e) {
       console.log(e);
@@ -72,7 +75,7 @@ export default function Connections() {
       await api.put(`/Social/connection/${connectionId}`, { status });
       Alert.alert("Success", `Request ${status.toLowerCase()}.`);
       fetchData();
-      fetchRequestsCount(); // Refresh count
+      fetchRequestsCount();
     } catch (e) {
       Alert.alert("Error", "Action failed.");
     }
@@ -115,7 +118,6 @@ export default function Connections() {
             Connected since {new Date(item.since).toLocaleDateString()}
           </Text>
         </View>
-
         <TouchableOpacity
           style={styles.chatBtn}
           onPress={() => handleChat(item.friend)}
@@ -166,19 +168,19 @@ export default function Connections() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
-          <Ionicons name="arrow-back" size={24} color="#0F172A" />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.headerTitle}>Connections</Text>
-        <View style={{ width: 32 }} />
+        <View style={styles.headerRight} />
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabs}>
         <TouchableOpacity
           style={[styles.tab, activeTab === "FRIENDS" && styles.activeTab]}
@@ -197,7 +199,6 @@ export default function Connections() {
           style={[styles.tab, activeTab === "REQUESTS" && styles.activeTab]}
           onPress={() => setActiveTab("REQUESTS")}
         >
-          {/* ✅ Shows Request Count in the Tab Label */}
           <Text
             style={[
               styles.tabText,
@@ -209,7 +210,6 @@ export default function Connections() {
         </TouchableOpacity>
       </View>
 
-      {/* List */}
       {loading ? (
         <ActivityIndicator
           size="large"
@@ -241,12 +241,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 20,
-    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
     backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
-  backBtn: { padding: 8 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#0F172A" },
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
 
   tabs: {
     flexDirection: "row",
@@ -283,15 +294,12 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   name: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   subText: { fontSize: 12, color: "#64748B" },
-
   chatBtn: { padding: 8, backgroundColor: "#EFF6FF", borderRadius: 20 },
-
   actions: { flexDirection: "row", marginTop: 16, gap: 12 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center" },
   acceptBtn: { backgroundColor: "#2563EB" },
   rejectBtn: { backgroundColor: "#F1F5F9" },
   acceptText: { color: "#FFF", fontWeight: "600" },
   rejectText: { color: "#64748B", fontWeight: "600" },
-
   emptyText: { textAlign: "center", marginTop: 50, color: "#94A3B8" },
 });

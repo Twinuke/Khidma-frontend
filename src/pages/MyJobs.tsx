@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useState } from "react";
@@ -58,7 +59,6 @@ export default function MyJobs() {
       setLoading(false);
       return;
     }
-
     try {
       const response = await api.get(`/Jobs/client/${user.userId}`);
       setJobs(response.data);
@@ -99,60 +99,75 @@ export default function MyJobs() {
     </TouchableOpacity>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
+      {/* ✅ Standardized Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>My Jobs</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.headerTitle}>My Jobs</Text>
+        <View style={styles.headerRight} />
       </View>
-      <FlatList
-        data={jobs}
-        keyExtractor={(item) => item.jobId.toString()}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              You have not posted any jobs yet.
-            </Text>
-          </View>
-        }
-      />
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      ) : (
+        <FlatList
+          data={jobs}
+          keyExtractor={(item) => item.jobId.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                You have not posted any jobs yet.
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+
+  // ✅ Standard Header
   header: {
-    paddingTop: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
+    paddingTop: 40,
+    paddingBottom: 10,
+    backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderColor: "#E2E8F0",
+    borderBottomColor: "#E2E8F0",
   },
-  title: {
-    fontSize: 24,
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
     fontWeight: "700",
     color: "#0F172A",
+    textAlign: "center",
   },
-  list: {
-    padding: 16,
-  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
+  list: { padding: 16 },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
@@ -180,27 +195,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#1D4ED8",
-  },
-  meta: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 2,
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  empty: {
-    marginTop: 60,
-    alignItems: "center",
-  },
-  emptyText: {
-    color: "#6B7280",
-    fontSize: 15,
-  },
+  badgeText: { fontSize: 11, fontWeight: "700", color: "#1D4ED8" },
+  meta: { fontSize: 13, color: "#6B7280", marginTop: 2 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  empty: { marginTop: 60, alignItems: "center" },
+  emptyText: { color: "#6B7280", fontSize: 15 },
 });

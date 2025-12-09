@@ -7,7 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
-  TouchableOpacity, // ✅ Import TouchableOpacity
+  TouchableOpacity,
   View,
 } from "react-native";
 import { ScreenWrapper } from "../../components/ScreenWrapper";
@@ -20,13 +20,14 @@ interface Notification {
   title: string;
   message: string;
   type: number;
+  relatedEntityId?: number;
   isRead: boolean;
   createdAt: string;
 }
 
 export default function Notifications() {
-  const { user } = useUser();
-  const navigation = useNavigation<any>(); // ✅ Hook for navigation
+  const { user, refreshCounts } = useUser();
+  const navigation = useNavigation<any>();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,12 +35,12 @@ export default function Notifications() {
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
+      refreshCounts();
     }, [user?.userId])
   );
 
   const fetchNotifications = async () => {
     if (!user?.userId) return;
-
     try {
       const response = await api.get(`/Notifications/user/${user.userId}`);
       setNotifications(response.data);
@@ -56,13 +57,53 @@ export default function Notifications() {
     fetchNotifications();
   };
 
-  // ✅ Handle Notification Click
-  const handlePress = (item: Notification) => {
-    // Type 5 = ConnectionRequest (matches backend enum)
-    if (item.type === 5) {
-      navigation.navigate("Connections"); // Navigate to Connections page
+  const handlePress = async (item: Notification) => {
+    // 1. Optimistic Update
+    const updated = notifications.map((n) =>
+      n.notificationId === item.notificationId ? { ...n, isRead: true } : n
+    );
+    setNotifications(updated);
+
+    // 2. Mark as read API
+    try {
+      await api.put(`/Notifications/${item.notificationId}/read`);
+      refreshCounts();
+    } catch (e) {
+      console.log(e);
     }
-    // You can add more types here (e.g., if type === 1, go to JobDetails)
+
+    // 3. Navigation Logic
+    switch (item.type) {
+      case 1: // Bid Placed
+        // ✅ Works for BOTH Client (Received Bid) and Freelancer (Placed Bid)
+        if (item.relatedEntityId) {
+          navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+        }
+        break;
+      case 2: // Bid Accepted
+        // ✅ Freelancer goes to JobDetails
+        if (item.relatedEntityId) {
+          navigation.navigate("JobDetails", { jobId: item.relatedEntityId });
+        }
+        break;
+      case 5: // Connection Request
+        navigation.navigate("Connections");
+        break;
+      case 6: // Like
+      case 7: // Comment
+      case 8: // Reaction
+        // ✅ Pass the specific Post ID to scroll to
+        if (item.relatedEntityId) {
+          navigation.navigate("SocialPage", {
+            targetPostId: item.relatedEntityId,
+          });
+        } else {
+          navigation.navigate("SocialPage");
+        }
+        break;
+      default:
+        console.log("Unknown notification type");
+    }
   };
 
   const getIcon = (type: number) => {
@@ -71,10 +112,14 @@ export default function Notifications() {
         return <Ionicons name="pricetag" size={24} color="#3B82F6" />;
       case 2:
         return <Ionicons name="checkmark-circle" size={24} color="#10B981" />;
-      case 3:
-        return <Ionicons name="cash" size={24} color="#F59E0B" />;
       case 5:
-        return <Ionicons name="person-add" size={24} color="#8B5CF6" />; // ✅ Icon for Friend Request
+        return <Ionicons name="person-add" size={24} color="#8B5CF6" />;
+      case 6:
+        return <Ionicons name="heart" size={24} color="#EF4444" />;
+      case 7:
+        return <Ionicons name="chatbubble" size={24} color="#F59E0B" />;
+      case 8:
+        return <Ionicons name="happy" size={24} color="#F59E0B" />;
       default:
         return <Ionicons name="notifications" size={24} color="#6B7280" />;
     }
@@ -83,7 +128,7 @@ export default function Notifications() {
   const renderItem = ({ item }: { item: Notification }) => (
     <TouchableOpacity
       style={[styles.card, !item.isRead && styles.unreadCard]}
-      onPress={() => handlePress(item)} // ✅ Make card clickable
+      onPress={() => handlePress(item)}
       activeOpacity={0.7}
     >
       <View style={styles.iconContainer}>{getIcon(item.type)}</View>
@@ -94,7 +139,6 @@ export default function Notifications() {
           {new Date(item.createdAt).toLocaleString()}
         </Text>
       </View>
-      {/* Small arrow to indicate it's clickable */}
       <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
     </TouchableOpacity>
   );
@@ -102,13 +146,16 @@ export default function Notifications() {
   return (
     <ScreenWrapper style={styles.container} scrollable={false}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={{ marginRight: 10 }}
-        >
-          <Ionicons name="arrow-back" size={24} color="#0F172A" />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.headerTitle}>Notifications</Text>
+        <View style={styles.headerRight} />
       </View>
 
       {loading ? (
@@ -147,12 +194,25 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 20,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderColor: "#E2E8F0",
+    borderBottomColor: "#E2E8F0",
   },
-  headerTitle: { fontSize: 24, fontWeight: "bold", color: "#0F172A" },
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
   list: { padding: 16 },
   card: {
     flexDirection: "row",
@@ -168,10 +228,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  unreadCard: {
-    backgroundColor: "#F0F9FF",
-    borderColor: "#BAE6FD",
-  },
+  unreadCard: { backgroundColor: "#F0F9FF", borderColor: "#BAE6FD" },
   iconContainer: { marginRight: 12, justifyContent: "center" },
   textContainer: { flex: 1 },
   cardTitle: {

@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ScreenWrapper } from "../../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
@@ -39,12 +38,22 @@ export default function Messages() {
   };
 
   return (
-    <ScreenWrapper scrollable={false} style={styles.container}>
+    <View style={styles.container}>
+      {/* Standardized Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Messages</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.headerTitle}>Messages</Text>
+        <View style={styles.headerRight} />
       </View>
 
-      {/* Search Bar - Logic to search new users not implemented for brevity, but UI is here */}
+      {/* Search Bar */}
       <View style={styles.searchBox}>
         <Ionicons name="search" size={20} color="#94A3B8" />
         <TextInput
@@ -78,14 +87,36 @@ export default function Messages() {
           </TouchableOpacity>
         )}
       />
-    </ScreenWrapper>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: { padding: 20, backgroundColor: "#FFF" },
-  title: { fontSize: 24, fontWeight: "bold" },
+
+  // ✅ Standardized Header Styles
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
   searchBox: {
     flexDirection: "row",
     margin: 16,

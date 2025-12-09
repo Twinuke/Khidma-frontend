@@ -29,7 +29,6 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// --- LEBANON CITIES DATA ---
 const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
   Beirut: { lat: 33.8938, lng: 35.5018 },
   Tripoli: { lat: 34.4367, lng: 35.8497 },
@@ -55,11 +54,9 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form State
   const [formData, setFormData] = useState<Partial<User>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Location State
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [isLocationFixed, setIsLocationFixed] = useState(false);
   const [region, setRegion] = useState({
@@ -74,7 +71,6 @@ export default function Profile() {
   } | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Initialize form
   useEffect(() => {
     if (user) {
       initializeForm(user);
@@ -135,7 +131,6 @@ export default function Profile() {
 
     setIsSaving(true);
     try {
-      // ✅ FIX: Create a clean payload matching UserUpdateDto
       const cleanPayload = {
         fullName: formData.fullName,
         email: formData.email,
@@ -170,12 +165,10 @@ export default function Profile() {
     }
 
     try {
-      // ✅ FIX 1: Use ['images'] array (Fixes Deprecation Warning & Crash)
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
-        // ✅ FIX 2: Quality 0.2 (Fixes 500/400 Error due to massive payload)
         quality: 0.2,
         base64: true,
       });
@@ -258,12 +251,7 @@ export default function Profile() {
       <View style={styles.centerContainer}>
         <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
         <Text style={styles.errorText}>User profile could not be loaded.</Text>
-        <TouchableOpacity
-          style={styles.loginBtn}
-          onPress={() => {
-            logout();
-          }}
-        >
+        <TouchableOpacity style={styles.loginBtn} onPress={() => logout()}>
           <Text style={styles.loginBtnText}>Go to Login</Text>
         </TouchableOpacity>
       </View>
@@ -303,33 +291,39 @@ export default function Profile() {
 
   return (
     <ScreenWrapper scrollable={true} style={styles.container}>
-      {/* Header */}
+      {/* Standardized Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.iconButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#0F172A" />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.headerTitle}>
           {isEditing ? "Edit Profile" : "My Profile"}
         </Text>
-        <TouchableOpacity
-          onPress={() => {
-            if (isEditing) {
-              setIsEditing(false); // Cancel
-              setErrors({});
-              if (user) initializeForm(user);
-            } else {
-              setIsEditing(true);
-            }
-          }}
-          style={styles.editButton}
-        >
-          <Text style={styles.editButtonText}>
-            {isEditing ? "Cancel" : "Edit"}
-          </Text>
-        </TouchableOpacity>
+
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => {
+              if (isEditing) {
+                setIsEditing(false);
+                setErrors({});
+                if (user) initializeForm(user);
+              } else {
+                setIsEditing(true);
+              }
+            }}
+            style={styles.editButton}
+          >
+            <Text style={styles.editButtonText}>
+              {isEditing ? "Cancel" : "Edit"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -407,7 +401,6 @@ export default function Profile() {
             <Text style={styles.readOnlyText}>{user.city || "Not set"}</Text>
           )}
 
-          {/* Helper for GPS */}
           {isEditing && (
             <TouchableOpacity
               style={styles.gpsButton}
@@ -419,7 +412,6 @@ export default function Profile() {
           )}
         </View>
 
-        {/* Map Preview (Visible if location set) */}
         {(selectedCity || pinCoords) && (
           <View style={styles.mapContainer}>
             <MapView
@@ -441,7 +433,6 @@ export default function Profile() {
           </View>
         )}
 
-        {/* Action Buttons */}
         {isEditing ? (
           <TouchableOpacity
             style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
@@ -466,7 +457,6 @@ export default function Profile() {
         )}
       </View>
 
-      {/* City Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -514,6 +504,32 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
+
+  // ✅ Standardized Header Styles
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+  editButton: { padding: 4 },
+  editButtonText: { color: "#2563EB", fontWeight: "600", fontSize: 16 },
+
   centerContainer: {
     flex: 1,
     justifyContent: "center",
@@ -535,22 +551,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   loginBtnText: { color: "#FFF", fontWeight: "600" },
-
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
-  iconButton: { padding: 8 },
-  editButton: { padding: 8 },
-  editButtonText: { color: "#2563EB", fontWeight: "600", fontSize: 16 },
 
   content: { padding: 20, paddingBottom: 40 },
 

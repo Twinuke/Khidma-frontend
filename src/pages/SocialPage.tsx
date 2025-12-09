@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ScreenWrapper } from "../../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
@@ -25,16 +24,18 @@ const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
 export default function SocialPage() {
   const { user } = useUser();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>(); // ✅ Access route params
+  const { targetPostId } = route.params || {}; // ✅ Get target post ID if exists
 
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectionsCount, setConnectionsCount] = useState(0);
 
+  const flatListRef = useRef<FlatList>(null); // ✅ Ref for scrolling
+
   // Comments State
   const [activePostId, setActivePostId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
-
-  // Reaction Picker State
   const [reactionPickerPostId, setReactionPickerPostId] = useState<
     number | null
   >(null);
@@ -44,6 +45,22 @@ export default function SocialPage() {
   useEffect(() => {
     if (user?.userId) fetchFeed();
   }, [user?.userId]);
+
+  // ✅ Scroll to target post when posts are loaded
+  useEffect(() => {
+    if (posts.length > 0 && targetPostId) {
+      const index = posts.findIndex((p) => p.postId === targetPostId);
+      if (index !== -1) {
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({
+            index,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        }, 500); // Small delay to ensure rendering
+      }
+    }
+  }, [posts, targetPostId]);
 
   const fetchFeed = async () => {
     try {
@@ -59,11 +76,8 @@ export default function SocialPage() {
     }
   };
 
-  // ✅ NEW: Handle Reaction (Emoji)
   const handleReaction = async (postId: number, reaction: string) => {
-    setReactionPickerPostId(null); // Close picker
-
-    // Optimistic Update
+    setReactionPickerPostId(null);
     setPosts((prev) =>
       prev.map((p) => {
         if (p.postId === postId) {
@@ -77,7 +91,6 @@ export default function SocialPage() {
         return p;
       })
     );
-
     try {
       await api.post(`/Social/posts/react`, {
         postId,
@@ -89,27 +102,19 @@ export default function SocialPage() {
     }
   };
 
-  // ✅ NEW: Simple Like Toggle (Default Heart)
   const handleSimpleLike = (postId: number, currentReaction: string | null) => {
-    if (currentReaction) {
-      // If already reacted, remove reaction (Unlike)
-      handleRemoveReaction(postId);
-    } else {
-      // Default like
-      handleReaction(postId, "❤️");
-    }
+    if (currentReaction) handleRemoveReaction(postId);
+    else handleReaction(postId, "❤️");
   };
 
   const handleRemoveReaction = async (postId: number) => {
     setPosts((prev) =>
       prev.map((p) => {
-        if (p.postId === postId) {
+        if (p.postId === postId)
           return { ...p, myReaction: null, likesCount: p.likesCount - 1 };
-        }
         return p;
       })
     );
-
     try {
       await api.delete(`/Social/posts/${postId}/react?userId=${user?.userId}`);
     } catch (e) {
@@ -117,9 +122,7 @@ export default function SocialPage() {
     }
   };
 
-  // ✅ NEW: Like a Comment
   const handleLikeComment = async (commentId: number) => {
-    // Update Local State inside the Active Post
     setPosts((prev) =>
       prev.map((p) => {
         if (p.postId === activePostId) {
@@ -141,8 +144,6 @@ export default function SocialPage() {
         return p;
       })
     );
-
-    // API Call
     try {
       await api.post(`/Social/comments/${commentId}/like`, {
         userId: user?.userId,
@@ -154,14 +155,12 @@ export default function SocialPage() {
 
   const handleComment = async () => {
     if (!activePostId || !commentText.trim()) return;
-
     try {
       const res = await api.post("/Social/posts/comment", {
         postId: activePostId,
         userId: user?.userId,
         content: commentText,
       });
-
       setPosts((prev) =>
         prev.map((p) => {
           if (p.postId === activePostId) {
@@ -176,7 +175,6 @@ export default function SocialPage() {
           return p;
         })
       );
-
       setCommentText("");
       Keyboard.dismiss();
     } catch (e) {
@@ -193,16 +191,17 @@ export default function SocialPage() {
   const renderPost = ({ item }: { item: any }) => {
     const isJobPosted = item.type === 0;
     const timeAgo = new Date(item.createdAt).toLocaleDateString();
+    // Highlight the post if it matches targetPostId
+    const isTarget = item.postId === targetPostId;
 
     return (
       <View
-        style={styles.card}
+        style={[styles.card, isTarget && styles.highlightCard]}
         onStartShouldSetResponder={() => {
           setReactionPickerPostId(null);
           return false;
         }}
       >
-        {/* Header */}
         <View style={styles.headerRow}>
           <Image
             source={{
@@ -217,7 +216,6 @@ export default function SocialPage() {
           </View>
         </View>
 
-        {/* Content */}
         <View style={styles.body}>
           {isJobPosted ? (
             <Text style={styles.text}>
@@ -246,7 +244,19 @@ export default function SocialPage() {
           )}
         </View>
 
-        {/* Stats */}
+        {/* Reaction Bubbles */}
+        {item.reactions && item.reactions.length > 0 && (
+          <View style={styles.reactionsList}>
+            {item.reactions.map((r: any) => (
+              <View key={r.type} style={styles.reactionBubble}>
+                <Text style={{ fontSize: 12 }}>
+                  {r.type} {r.count}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={styles.statsRow}>
           <Text style={styles.statText}>{item.likesCount} Likes</Text>
           <TouchableOpacity onPress={() => openComments(item.postId)}>
@@ -254,9 +264,7 @@ export default function SocialPage() {
           </TouchableOpacity>
         </View>
 
-        {/* Actions with Reaction Picker */}
         <View style={[styles.actions, { zIndex: 10 }]}>
-          {/* Reaction Picker Overlay */}
           {reactionPickerPostId === item.postId && (
             <View style={styles.reactionContainer}>
               {REACTIONS.map((emoji) => (
@@ -304,9 +312,17 @@ export default function SocialPage() {
   };
 
   return (
-    <ScreenWrapper style={styles.container} scrollable={false}>
+    <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Feed</Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.iconBtn}
+        >
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Community</Text>
+        <View style={{ width: 32 }} />
       </View>
 
       {loading ? (
@@ -317,6 +333,7 @@ export default function SocialPage() {
         />
       ) : (
         <FlatList
+          ref={flatListRef} // ✅ Attached Ref
           data={posts}
           keyExtractor={(item) => item.postId.toString()}
           renderItem={renderPost}
@@ -324,6 +341,16 @@ export default function SocialPage() {
           ListEmptyComponent={
             <Text style={styles.emptyTitle}>No posts yet.</Text>
           }
+          onScrollToIndexFailed={(info) => {
+            // Fallback if index calculation misses due to variable heights
+            const wait = new Promise((resolve) => setTimeout(resolve, 500));
+            wait.then(() => {
+              flatListRef.current?.scrollToIndex({
+                index: info.index,
+                animated: true,
+              });
+            });
+          }}
         />
       )}
 
@@ -410,19 +437,26 @@ export default function SocialPage() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </ScreenWrapper>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F1F5F9" },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
-    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
     borderColor: "#E2E8F0",
   },
-  headerTitle: { fontSize: 24, fontWeight: "800", color: "#0F172A" },
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#0F172A" },
+  iconBtn: { padding: 4 },
+
   list: { padding: 16, paddingBottom: 100 },
   card: {
     backgroundColor: "#FFF",
@@ -431,6 +465,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     elevation: 1,
   },
+  highlightCard: {
+    borderWidth: 2,
+    borderColor: "#2563EB",
+    backgroundColor: "#EFF6FF",
+  }, // ✅ Highlight style
+
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   avatar: {
     width: 40,
@@ -444,6 +484,19 @@ const styles = StyleSheet.create({
   body: { marginBottom: 12 },
   text: { fontSize: 15, color: "#334155", lineHeight: 22 },
   linkText: { color: "#2563EB", fontWeight: "700" },
+
+  reactionsList: { flexDirection: "row", gap: 6, marginBottom: 10 },
+  reactionBubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
   statsRow: {
     flexDirection: "row",
     gap: 12,
@@ -460,8 +513,6 @@ const styles = StyleSheet.create({
   },
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 8 },
   actionText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
-
-  // Reaction Picker Styles
   reactionContainer: {
     position: "absolute",
     bottom: 40,

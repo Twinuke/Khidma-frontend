@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import React, { useCallback, useEffect, useState } from "react";
@@ -16,11 +17,6 @@ import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
 type JobBidsNav = NativeStackNavigationProp<RootStackParamList, "JobBids">;
-
-interface RouteParams {
-  jobId: number;
-  jobTitle?: string;
-}
 
 interface BidItem {
   bidId: number;
@@ -51,11 +47,11 @@ const statusMeta = (status: number) => {
 };
 
 export default function JobBids() {
-  const route = useRoute();
+  const route = useRoute<any>();
   const navigation = useNavigation<JobBidsNav>();
   const { user } = useUser();
 
-  const { jobId, jobTitle } = (route.params || {}) as RouteParams;
+  const { jobId, jobTitle } = route.params || {};
 
   const [bids, setBids] = useState<BidItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +59,6 @@ export default function JobBids() {
 
   const loadBids = useCallback(async () => {
     if (!jobId) return;
-
     try {
       const response = await api.get(`/Bids/job/${jobId}`);
       setBids(response.data);
@@ -89,32 +84,21 @@ export default function JobBids() {
       Alert.alert("Error", "Only clients can accept bids.");
       return;
     }
-
-    Alert.alert(
-      "Accept bid",
-      `Accept bid of $${bid.bidAmount.toFixed(2)} from ${
-        bid.freelancer?.fullName || "freelancer"
-      }?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Accept",
-          onPress: async () => {
-            try {
-              await api.put(`/Bids/${bid.bidId}/accept`);
-              Alert.alert("Success", "Bid accepted.");
-              loadBids();
-            } catch (error) {
-              console.log("Accept bid error", error);
-              Alert.alert(
-                "Error",
-                "Failed to accept bid. Check your connection."
-              );
-            }
-          },
+    Alert.alert("Accept bid", `Accept bid of $${bid.bidAmount.toFixed(2)}?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Accept",
+        onPress: async () => {
+          try {
+            await api.put(`/Bids/${bid.bidId}/accept`);
+            Alert.alert("Success", "Bid accepted.");
+            loadBids();
+          } catch (error) {
+            Alert.alert("Error", "Failed to accept bid.");
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const renderItem = ({ item }: { item: BidItem }) => {
@@ -155,73 +139,73 @@ export default function JobBids() {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
+      {/* ✅ Standardized Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>{"< Back"}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Bids</Text>
-        <Text style={styles.subtitle}>{jobTitle || `Job #${jobId}`}</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.headerTitle}>Job Bids</Text>
+        <View style={styles.headerRight} />
       </View>
 
-      <FlatList
-        data={bids}
-        keyExtractor={(item) => item.bidId.toString()}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No bids yet.</Text>
-          </View>
-        }
-      />
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      ) : (
+        <FlatList
+          data={bids}
+          keyExtractor={(item) => item.bidId.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No bids received yet.</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+
+  // ✅ Standard Header
   header: {
-    paddingTop: 50,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
+    paddingTop: 40,
+    paddingBottom: 10,
+    backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderColor: "#E2E8F0",
+    borderBottomColor: "#E2E8F0",
   },
-  backText: {
-    color: "#2563EB",
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  title: {
-    fontSize: 22,
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
     fontWeight: "700",
     color: "#0F172A",
+    textAlign: "center",
   },
-  subtitle: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 4,
-  },
-  list: {
-    padding: 16,
-  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
+  list: { padding: 16 },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
@@ -236,41 +220,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  freelancerName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  amount: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2563EB",
-  },
-  meta: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 2,
-  },
+  freelancerName: { fontSize: 16, fontWeight: "700", color: "#111827" },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statusText: { fontSize: 11, fontWeight: "700" },
+  amount: { fontSize: 18, fontWeight: "700", color: "#2563EB" },
+  meta: { fontSize: 13, color: "#6B7280", marginTop: 2 },
   proposalLabel: {
     fontSize: 13,
     fontWeight: "600",
     color: "#4B5563",
     marginTop: 10,
   },
-  proposalText: {
-    fontSize: 13,
-    color: "#374151",
-    marginTop: 4,
-  },
+  proposalText: { fontSize: 13, color: "#374151", marginTop: 4 },
   acceptBtn: {
     marginTop: 14,
     backgroundColor: "#16A34A",
@@ -278,22 +239,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
-  acceptText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  empty: {
-    alignItems: "center",
-    marginTop: 60,
-  },
-  emptyText: {
-    color: "#6B7280",
-    fontSize: 15,
-  },
+  acceptText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  empty: { alignItems: "center", marginTop: 60 },
+  emptyText: { color: "#6B7280", fontSize: 15 },
 });

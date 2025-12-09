@@ -83,7 +83,7 @@ export default function Bids() {
     navigation.navigate("JobDetails", {
       jobId: bid.jobId,
       jobData: bid.job,
-      hasPlacedBid: !isClient, // true for freelancer list
+      hasPlacedBid: !isClient,
     });
   };
 
@@ -100,10 +100,8 @@ export default function Bids() {
     }
   };
 
-  // Unique jobs for filter chips (client view only)
   const jobsForFilter = useMemo(() => {
     if (!isClient) return [];
-
     const map = new Map<number, { jobId: number; title: string }>();
     bids.forEach((b) => {
       if (b.jobId && b.job?.title) {
@@ -120,13 +118,10 @@ export default function Bids() {
 
   const renderItem = ({ item }: { item: BidItem }) => {
     const meta = getStatusMeta(item.status);
-
-    // Card header texts differ slightly per role
     const mainTitle = item.job?.title || `Job #${item.jobId}`;
     const secondary = isClient
       ? item.freelancer?.fullName || "Freelancer"
       : item.job?.client?.fullName || "Client";
-
     const secondaryLabel = isClient ? "Freelancer" : "Client";
 
     return (
@@ -135,7 +130,7 @@ export default function Bids() {
         activeOpacity={0.7}
         onPress={() => handleBidPress(item)}
       >
-        <View style={styles.header}>
+        <View style={styles.headerRow}>
           <Text style={styles.jobTitle} numberOfLines={1}>
             {mainTitle}
           </Text>
@@ -169,15 +164,25 @@ export default function Bids() {
   };
 
   return (
-    <ScreenWrapper>
-      <View style={styles.container}>
-        <View style={styles.topHeader}>
-          <Text style={styles.title}>
-            {isClient ? "Bids on my jobs" : "My bids"}
-          </Text>
+    <ScreenWrapper scrollable={false} style={styles.container}>
+      {/* ✅ Standardized Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          </TouchableOpacity>
         </View>
+        <Text style={styles.headerTitle}>
+          {isClient ? "Bids on My Jobs" : "My Bids"}
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
 
-        {isClient && jobsForFilter.length > 0 && (
+      {isClient && jobsForFilter.length > 0 && (
+        <View style={{ height: 50 }}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -222,60 +227,65 @@ export default function Bids() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-        )}
+        </View>
+      )}
 
-        {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" />
-          </View>
-        ) : (
-          <FlatList
-            data={filteredBids}
-            keyExtractor={(item) => item.bidId.toString()}
-            renderItem={renderItem}
-            contentContainerStyle={styles.list}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  {isClient
-                    ? "No bids on your jobs yet."
-                    : "You haven't placed any bids yet."}
-                </Text>
-              </View>
-            }
-          />
-        )}
-      </View>
+      {loading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredBids}
+          keyExtractor={(item) => item.bidId.toString()}
+          renderItem={renderItem}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                {isClient
+                  ? "No bids on your jobs yet."
+                  : "You haven't placed any bids yet."}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-  topHeader: {
-    padding: 20,
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+
+  // ✅ Standard Header
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 10,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderColor: "#E2E8F0",
+    borderBottomColor: "#E2E8F0",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
+  headerLeft: { flex: 1, alignItems: "flex-start" },
+  headerTitle: {
+    flex: 2,
+    fontSize: 20,
+    fontWeight: "700",
     color: "#0F172A",
+    textAlign: "center",
   },
-  filterBar: {
-    backgroundColor: "#F8FAFC",
-  },
-  filterContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
+  headerRight: { flex: 1, alignItems: "flex-end" },
+  iconBtn: { padding: 4 },
+
+  filterBar: { backgroundColor: "#F8FAFC" },
+  filterContent: { paddingHorizontal: 12, paddingVertical: 8 },
   filterChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -285,26 +295,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF6FF",
     marginRight: 8,
   },
-  filterChipActive: {
-    backgroundColor: "#2563EB",
-    borderColor: "#2563EB",
-  },
-  filterChipText: {
-    fontSize: 13,
-    color: "#1E293B",
-  },
-  filterChipTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  loading: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  list: {
-    padding: 16,
-  },
+  filterChipActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
+  filterChipText: { fontSize: 13, color: "#1E293B" },
+  filterChipTextActive: { color: "#FFFFFF", fontWeight: "700" },
+
+  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
+  list: { padding: 16 },
   card: {
     backgroundColor: "#FFF",
     padding: 16,
@@ -317,7 +313,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
-  header: {
+  headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -330,25 +326,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  clientName: {
-    fontSize: 13,
-    color: "#64748B",
-    marginBottom: 8,
-  },
-  proposal: {
-    fontSize: 13,
-    color: "#475569",
-    marginBottom: 10,
-  },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeText: { fontSize: 11, fontWeight: "700" },
+  clientName: { fontSize: 13, color: "#64748B", marginBottom: 8 },
+  proposal: { fontSize: 13, color: "#475569", marginBottom: 10 },
   footer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -357,25 +338,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#F1F5F9",
   },
-  amount: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#2563EB",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  arrowBtn: {
-    padding: 4,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    marginTop: 60,
-  },
-  emptyText: {
-    color: "#64748B",
-    marginTop: 12,
-    fontSize: 16,
-  },
+  amount: { fontSize: 18, fontWeight: "700", color: "#2563EB" },
+  footerText: { fontSize: 12, color: "#6B7280" },
+  arrowBtn: { padding: 4 },
+  emptyContainer: { alignItems: "center", marginTop: 60 },
+  emptyText: { color: "#64748B", marginTop: 12, fontSize: 16 },
 });
