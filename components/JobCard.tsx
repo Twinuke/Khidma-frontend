@@ -1,16 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 import { Job } from "../src/types/job";
 
-const COLORS = {
-  bg: "#FFF",
-  primary: "#2563EB",
-  textMain: "#0F172A",
-  textSec: "#64748B",
-  border: "#E2E8F0",
-  red: "#EF4444",
-  grayBg: "#F3F4F6",
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diff < 60) return "Just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 };
 
 interface JobCardProps {
@@ -19,68 +20,72 @@ interface JobCardProps {
 }
 
 export const JobCard: React.FC<JobCardProps> = ({ job, onPress }) => {
-  const timeAgo = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    return days === 0 ? "Today" : `${days}d ago`;
+  // Determine Category Icon & Color
+  const getCategoryTheme = () => {
+    const cat = (job.category || "").toLowerCase();
+    if (cat.includes("dev")) return { icon: "code-slash", color: "#3B82F6", bg: "#EFF6FF" };
+    if (cat.includes("design")) return { icon: "brush", color: "#EC4899", bg: "#FDF2F8" };
+    if (cat.includes("market")) return { icon: "trending-up", color: "#8B5CF6", bg: "#F5F3FF" };
+    return { icon: "briefcase", color: "#64748B", bg: "#F1F5F9" };
   };
+
+  const theme = getCategoryTheme();
 
   return (
     <TouchableOpacity
-      // ✅ FIX: Apply gray style if bid placed
-      style={[styles.card, job.hasPlacedBid && styles.cardDisabled]}
-      onPress={() => onPress(job)}
       activeOpacity={0.9}
+      style={styles.container}
+      onPress={() => onPress(job)}
     >
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>
-            {job.title}
-          </Text>
-          <Text style={styles.client}>
-            {job.client?.fullName || "Unknown Client"}
-          </Text>
-        </View>
-        <View style={styles.priceTag}>
-          <Text style={styles.priceText}>${job.budget}</Text>
-        </View>
-      </View>
-
-      {/* ✅ FIX: Red Badge if Bid Placed */}
-      {job.hasPlacedBid && (
-        <View style={styles.bidBadge}>
-          <Ionicons name="checkmark-circle" size={12} color="#FFF" />
-          <Text style={styles.bidBadgeText}>Bid Placed</Text>
-        </View>
-      )}
-
-      <View style={styles.tagsRow}>
-        <View style={styles.tag}>
-          <Text style={styles.tagText}>{job.category || "General"}</Text>
-        </View>
-        {job.isRemote && (
-          <View style={styles.tag}>
-            <Text style={styles.tagText}>Remote</Text>
+      <View style={styles.contentContainer}>
+        {/* Header: Icon + Title + Time */}
+        <View style={styles.header}>
+          <View style={[styles.iconBox, { backgroundColor: theme.bg }]}>
+            <Ionicons name={theme.icon as any} size={20} color={theme.color} />
           </View>
-        )}
-      </View>
-
-      <Text style={styles.description} numberOfLines={2}>
-        {job.description}
-      </Text>
-
-      <View style={styles.footer}>
-        <View style={styles.iconRow}>
-          <Ionicons name="time-outline" size={14} color={COLORS.textSec} />
-          <Text style={styles.footerText}>{timeAgo(job.createdAt)}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.title} numberOfLines={1}>{job.title}</Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.clientName}>
+                {job.client?.fullName || "Verified Client"}
+              </Text>
+              <View style={styles.dot} />
+              <Text style={styles.timeText}>{formatTime(job.createdAt)}</Text>
+            </View>
+          </View>
+          
+          {/* Price Tag */}
+          <View style={styles.priceTag}>
+            <Text style={styles.priceText}>${Number(job.budget).toLocaleString()}</Text>
+          </View>
         </View>
-        <View style={styles.iconRow}>
-          <Ionicons
-            name="document-text-outline"
-            size={14}
-            color={COLORS.textSec}
-          />
-          <Text style={styles.footerText}>{job.bidsCount || 0} Bids</Text>
+
+        {/* Description Snippet */}
+        <Text style={styles.description} numberOfLines={2}>
+          {job.description}
+        </Text>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Footer: Badges + Action */}
+        <View style={styles.footer}>
+          <View style={styles.badges}>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{job.experienceLevel}</Text>
+            </View>
+            {job.isRemote && (
+              <View style={[styles.badge, styles.remoteBadge]}>
+                <Ionicons name="globe-outline" size={10} color="#059669" style={{marginRight: 4}} />
+                <Text style={styles.remoteText}>Remote</Text>
+              </View>
+            )}
+          </View>
+          
+          <View style={styles.actionRow}>
+            <Text style={styles.actionText}>Details</Text>
+            <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -88,80 +93,69 @@ export const JobCard: React.FC<JobCardProps> = ({ job, onPress }) => {
 };
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+  container: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    marginBottom: 16,
+    // Modern Soft Shadow
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: "rgba(241, 245, 249, 1)", // Subtle border
   },
-  cardDisabled: {
-    backgroundColor: COLORS.grayBg,
-    opacity: 0.9,
-    borderColor: "#D1D5DB",
-  },
-  bidBadge: {
-    flexDirection: "row",
+  contentContainer: { padding: 20 },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     alignItems: "center",
-    backgroundColor: COLORS.red,
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginBottom: 10,
+    justifyContent: "center",
+    marginRight: 14,
   },
-  bidBadgeText: {
-    color: "#FFF",
-    fontSize: 10,
-    fontWeight: "700",
-    marginLeft: 4,
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.textMain,
-    marginBottom: 4,
-  },
-  client: { fontSize: 12, color: COLORS.textSec },
+  headerText: { flex: 1 },
+  title: { fontSize: 17, fontWeight: "700", color: "#0F172A", marginBottom: 4, letterSpacing: -0.3 },
+  metaRow: { flexDirection: "row", alignItems: "center" },
+  clientName: { fontSize: 13, color: "#64748B", fontWeight: "500" },
+  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#CBD5E1", marginHorizontal: 6 },
+  timeText: { fontSize: 12, color: "#94A3B8" },
+  
   priceTag: {
-    backgroundColor: "#EFF6FF",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    backgroundColor: "#F0FDF4", // Light Green
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#DCFCE7",
   },
-  priceText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
-  tagsRow: { flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 },
-  tag: {
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  tagText: { fontSize: 10, color: "#475569", fontWeight: "500" },
+  priceText: { color: "#166534", fontWeight: "700", fontSize: 14 },
+
   description: {
-    fontSize: 13,
-    color: COLORS.textSec,
-    lineHeight: 18,
-    marginBottom: 12,
+    fontSize: 15,
+    color: "#475569",
+    lineHeight: 24,
+    marginBottom: 16,
   },
-  footer: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 12,
-    gap: 16,
+
+  divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 16 },
+
+  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  badges: { flexDirection: "row", gap: 8 },
+  badge: {
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  iconRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  footerText: { fontSize: 12, color: COLORS.textSec },
+  badgeText: { fontSize: 12, color: "#475569", fontWeight: "600" },
+  remoteBadge: { backgroundColor: "#ECFDF5", borderColor: "#D1FAE5", flexDirection: "row", alignItems: "center" },
+  remoteText: { fontSize: 12, color: "#059669", fontWeight: "600" },
+
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  actionText: { fontSize: 13, color: "#64748B", fontWeight: "600" },
 });

@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  ActivityIndicator, 
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
-} from 'react-native';
-import api from '../config/api';
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+// Ensure this path matches your project structure. 
+// If your file is in 'components/', use '../src/config/api' or similar.
+import api from "../config/api";
+import { Ionicons } from "@expo/vector-icons"; 
 
 interface BidFormProps {
   jobId: number;
@@ -20,35 +23,61 @@ interface BidFormProps {
   onCancel: () => void;
 }
 
-export const BidForm: React.FC<BidFormProps> = ({ jobId, freelancerId, onSuccess, onCancel }) => {
-  const [amount, setAmount] = useState('');
-  const [days, setDays] = useState('');
-  const [proposal, setProposal] = useState('');
+export const BidForm: React.FC<BidFormProps> = ({
+  jobId,
+  freelancerId,
+  onSuccess,
+  onCancel,
+}) => {
+  const [amount, setAmount] = useState("");
+  const [days, setDays] = useState("");
+  const [proposal, setProposal] = useState("");
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // --- AI FUNCTIONALITY ---
+  const handleAiAssist = async () => {
+    setAiLoading(true);
+    try {
+      // Calls the new C# Controller
+      const response = await api.get(`/AiBid/suggest/${jobId}`);
+      const data = response.data;
+
+      // Fill form with AI data
+      setAmount(data.amount.toString());
+      setDays(data.days.toString());
+      setProposal(data.proposal);
+      
+      Alert.alert("✨ AI Magic", "Bid generated using Job Details & History!");
+    } catch (error: any) {
+      console.log(error);
+      Alert.alert("Error", "AI could not generate a bid. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+  // ------------------------
 
   const handleSubmit = async () => {
     if (!amount || !days || !proposal) {
-      Alert.alert('Error', 'Please fill all fields');
+      Alert.alert("Error", "Please fill all fields");
       return;
     }
 
     setLoading(true);
     try {
-      // 1. Submit Bid
-      // The backend (BidsController) AUTOMATICALLY creates the notification
-      await api.post('/Bids', {
+      await api.post("/Bids", {
         jobId,
         freelancerId,
         bidAmount: parseFloat(amount),
         proposalText: proposal,
         deliveryTimeDays: parseInt(days),
       });
-
-      Alert.alert('Success', 'Bid placed successfully!');
-      onSuccess(); // Close modal / Refresh parent
+      Alert.alert("Success", "Bid placed successfully!");
+      onSuccess();
     } catch (error: any) {
-      console.log('Bid Error:', error);
-      Alert.alert('Error', 'Failed to place bid. Please try again.');
+      console.log(error);
+      Alert.alert("Error", "Failed to place bid");
     } finally {
       setLoading(false);
     }
@@ -58,50 +87,78 @@ export const BidForm: React.FC<BidFormProps> = ({ jobId, freelancerId, onSuccess
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.keyboardAvoid}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
     >
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.container}>
-          <Text style={styles.header}>Place a Bid</Text>
           
+          <View style={styles.headerRow}>
+            <Text style={styles.header}>Place a Bid</Text>
+            
+            {/* ✨ AI BUTTON ✨ */}
+            <TouchableOpacity 
+              style={styles.aiButton} 
+              onPress={handleAiAssist}
+              disabled={aiLoading}
+            >
+              {aiLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="sparkles" size={16} color="white" style={{marginRight: 6}} />
+                  <Text style={styles.aiButtonText}>AI Auto-Fill</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
           <Text style={styles.label}>Bid Amount ($)</Text>
-          <TextInput 
-            style={styles.input} 
-            keyboardType="numeric" 
-            returnKeyType="next"
-            value={amount} 
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={amount}
             onChangeText={setAmount}
-            placeholder="e.g. 500" 
+            placeholder="e.g. 500"
           />
 
           <Text style={styles.label}>Delivery Time (Days)</Text>
-          <TextInput 
-            style={styles.input} 
-            keyboardType="numeric" 
-            returnKeyType="next"
-            value={days} 
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={days}
             onChangeText={setDays}
-            placeholder="e.g. 7" 
+            placeholder="e.g. 7"
           />
 
-          <Text style={styles.label}>Cover Letter</Text>
-          <TextInput 
-            style={[styles.input, styles.textArea]} 
-            multiline 
-            value={proposal} 
+          <Text style={styles.label}>Proposal</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            multiline
+            value={proposal}
             onChangeText={setProposal}
             placeholder="Why are you the best fit?"
           />
 
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} disabled={loading}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={onCancel}
+              disabled={loading}
+            >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={loading}>
-              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>Submit Proposal</Text>}
+            <TouchableOpacity
+              style={styles.submitBtn}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.submitText}>Submit Proposal</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -112,24 +169,65 @@ export const BidForm: React.FC<BidFormProps> = ({ jobId, freelancerId, onSuccess
 
 const styles = StyleSheet.create({
   keyboardAvoid: { flex: 1 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center' },
-  container: { padding: 24, backgroundColor: 'white', borderRadius: 20 },
-  header: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, color: '#0F172A' },
-  label: { fontSize: 14, color: '#64748B', marginBottom: 6, fontWeight: '600' },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
-    color: '#0F172A',
+  scrollContent: { flexGrow: 1, justifyContent: "center" },
+  container: {
+    padding: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
   },
-  textArea: { height: 100, textAlignVertical: 'top' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 10 },
-  cancelBtn: { flex: 1, padding: 14, alignItems: 'center', justifyContent:'center', borderRadius: 12, backgroundColor: '#F1F5F9' },
-  cancelText: { color: '#64748B', fontWeight: '600', fontSize: 16 },
-  submitBtn: { flex: 2, backgroundColor: '#2563EB', padding: 14, borderRadius: 12, alignItems: 'center' },
-  submitText: { color: 'white', fontWeight: '700', fontSize: 16 },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  header: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#0F172A",
+  },
+  aiButton: {
+    backgroundColor: "#8B5CF6", // Purple/Violet color for AI
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: "#8B5CF6",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  aiButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 12,
+  },
+  label: { fontSize: 14, color: "#64748B", marginBottom: 6 },
+  input: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  textArea: { height: 100, textAlignVertical: "top" },
+  actions: { flexDirection: "row", gap: 12 },
+  cancelBtn: {
+    flex: 1,
+    padding: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelText: { color: "#64748B", fontWeight: "600" },
+  submitBtn: {
+    flex: 2,
+    backgroundColor: "#2563EB",
+    padding: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  submitText: { color: "white", fontWeight: "700" },
 });

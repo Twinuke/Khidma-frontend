@@ -30,6 +30,7 @@ import Notifications from "./src/pages/Notifications";
 import Profile from "./src/pages/Profile";
 import Search from "./src/pages/Search";
 import Settings from "./src/pages/Settings";
+import OnboardingScreen from "./src/pages/OnboardingScreen"; // ✅ NEW: Import Onboarding
 
 // --- New Feature Screens (Social & Client Dashboard) ---
 import ClientJobDetails from "./src/pages/ClientJobDetails";
@@ -59,6 +60,7 @@ export type RootStackParamList = {
   ClientMyJobs: undefined;
   ClientJobDetails: { jobId: number };
   Connections: undefined;
+  OnboardingScreen: undefined; // ✅ NEW: Add to types
 };
 
 const AuthStack = createNativeStackNavigator<RootStackParamList>();
@@ -98,6 +100,9 @@ const AppNavigator = () => (
   <AppStack.Navigator screenOptions={{ headerShown: false }}>
     {/* Main Tabs is now the entry point instead of just Home */}
     <AppStack.Screen name="MainTabs" component={MainTabs} />
+
+    {/* ✅ NEW: Add Onboarding Screen */}
+    <AppStack.Screen name="OnboardingScreen" component={OnboardingScreen} />
 
     {/* Core Features that overlay the tabs */}
     <AppStack.Screen name="Jobs" component={Jobs} />

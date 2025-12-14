@@ -1,8 +1,9 @@
+import AsyncStorage from "@react-native-async-storage/async-storage"; // ✅ Import this
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -38,10 +39,25 @@ export default function Home() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { user, logout, refreshUser } = useUser();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0); // ✅ Added unread count state
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const headerHeight = useRef(new Animated.Value(HEADER_MIN_HEIGHT)).current;
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // ✅ NEW: Check for onboarding requirement
+  useEffect(() => {
+    checkOnboarding();
+  }, []);
+
+  const checkOnboarding = async () => {
+    const isNew = await AsyncStorage.getItem("isNewFreelancer");
+    if (isNew === "true") {
+      // Clear flag so it doesn't show next time
+      await AsyncStorage.removeItem("isNewFreelancer");
+      // Redirect to the new screen
+      navigation.navigate("OnboardingScreen"); 
+    }
+  };
 
   useFocusEffect(
     React.useCallback(() => {
@@ -54,10 +70,8 @@ export default function Home() {
     if (!user) return;
     try {
       const response = await api.get(`/Notifications/user/${user.userId}`);
-      // ✅ Calculate unread count
       const unread = response.data.filter((n: any) => !n.isRead).length;
       setUnreadCount(unread);
-
       setRecentActivity(response.data.slice(0, 3));
     } catch (e) {
       console.log(e);
@@ -162,7 +176,6 @@ export default function Home() {
               onPress={() => navigation.navigate("Notifications")}
             >
               <Ionicons name="notifications-outline" size={20} color="#FFF" />
-              {/* ✅ Dynamic Notification Badge */}
               {unreadCount > 0 && (
                 <View style={styles.notifBadge}>
                   <Text style={styles.notifText}>
@@ -395,8 +408,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     position: "relative",
   },
-
-  // ✅ New Notification Badge Styles
   notifBadge: {
     position: "absolute",
     top: -2,
@@ -410,7 +421,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   notifText: { color: "#FFF", fontSize: 9, fontWeight: "bold" },
-
   expandedContent: { marginTop: 10 },
   divider: {
     height: 1,
@@ -444,10 +454,8 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     height: 24,
   },
-
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
-
   balanceCard: {
     borderRadius: 20,
     padding: 24,
@@ -483,7 +491,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   withdrawText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
-
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -523,8 +530,6 @@ const styles = StyleSheet.create({
   },
   actTitle: { fontWeight: "bold", color: COLORS.dark },
   actDate: { color: "#94A3B8", fontSize: 12 },
-
-  footerWrapper: { position: "absolute", bottom: 0, left: 0, right: 0 },
   floatingFab: {
     position: "absolute",
     bottom: 100,
