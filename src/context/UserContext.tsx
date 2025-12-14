@@ -27,10 +27,10 @@ interface UserContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
 
-  // ✅ Badge Counts
+  // Badge Counts
   unreadNotifications: number;
   pendingRequests: number;
-  unreadChatCount: number; // ✅ Added Chat Count here
+  unreadChatCount: number;
   refreshCounts: () => Promise<void>;
 
   login: (email: string, password: string) => Promise<void>;
@@ -42,6 +42,22 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
+// ✅ Improved Cache Busting: Handles nulls safely
+const processUserImage = (userData: User) => {
+  if (
+    userData &&
+    userData.profileImageUrl &&
+    typeof userData.profileImageUrl === "string" &&
+    userData.profileImageUrl.startsWith("http")
+  ) {
+    return {
+      ...userData,
+      profileImageUrl: `${userData.profileImageUrl}?t=${new Date().getTime()}`,
+    };
+  }
+  return userData;
+};
+
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +65,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   // Badge States
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
-  const [unreadChatCount, setUnreadChatCount] = useState(0); // ✅ Init Chat Count
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   useEffect(() => {
     loadUserFromStorage();
@@ -62,8 +78,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
       if (token && userId) {
         const response = await api.get(`/Users/${userId}`);
-        setUser(response.data);
-        fetchBadges(userId); // Fetch all counts immediately
+        setUser(processUserImage(response.data));
+        fetchBadges(userId);
       }
     } catch (error) {
       console.log("Session Load Error:", error);
@@ -72,20 +88,15 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // ✅ Global Fetch for ALL Badges
   const fetchBadges = async (userId: string | number) => {
     try {
-      // 1. Notifications
       const notifRes = await api.get(`/Notifications/user/${userId}`);
       const unread = notifRes.data.filter((n: any) => !n.isRead).length;
       setUnreadNotifications(unread);
 
-      // 2. Pending Requests (Network Tab)
       const reqRes = await api.get(`/Social/requests/${userId}`);
       setPendingRequests(reqRes.data.length);
 
-      // 3. Unread Chat Messages (Chat Tab)
-      // We fetch conversations and sum up the 'unreadCount' of each
       const chatRes = await api.get(`/Chat/my/${userId}`);
       const totalChats = chatRes.data.reduce((sum: number, chat: any) => {
         return sum + (chat.unreadCount || 0);
@@ -102,7 +113,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       const { token, user } = response.data;
       await AsyncStorage.setItem("authToken", token);
       await AsyncStorage.setItem("userId", user.userId.toString());
-      setUser(user);
+      setUser(processUserImage(user));
       fetchBadges(user.userId);
     } catch (error) {
       throw error;
@@ -116,7 +127,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         const { token, user } = response.data;
         await AsyncStorage.setItem("authToken", token);
         await AsyncStorage.setItem("userId", user.userId.toString());
-        setUser(user);
+        setUser(processUserImage(user));
         fetchBadges(user.userId);
       }
     } catch (error) {
@@ -130,16 +141,20 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setUnreadNotifications(0);
     setPendingRequests(0);
-    setUnreadChatCount(0); // Clear chat count
+    setUnreadChatCount(0);
   };
 
   const updateUser = async (updatedData: Partial<User>) => {
     if (!user) return;
     try {
+      // 1. Send update to server
       const payload = { ...user, ...updatedData };
       await api.put(`/Users/${user.userId}`, payload);
-      setUser(payload);
+
+      // 2. Fetch the latest profile from server to ensure we have the correct Image URL
+      await refreshUser();
     } catch (error) {
+      console.error("Update User Error", error);
       throw error;
     }
   };
@@ -148,7 +163,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     if (user?.userId) {
       try {
         const response = await api.get(`/Users/${user.userId}`);
-        setUser(response.data);
+        setUser(processUserImage(response.data));
         fetchBadges(user.userId);
       } catch (e) {
         console.log("Refresh failed", e);
@@ -164,7 +179,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!user,
         unreadNotifications,
         pendingRequests,
-        unreadChatCount, // ✅ Expose to app
+        unreadChatCount,
         refreshCounts: () => fetchBadges(user?.userId || 0),
         login,
         register,
