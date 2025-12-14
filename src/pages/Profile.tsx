@@ -6,6 +6,8 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
   Image,
   LayoutAnimation,
   Modal,
@@ -15,6 +17,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   UIManager,
   View,
 } from "react-native";
@@ -22,12 +25,15 @@ import MapView, { Marker } from "react-native-maps";
 import { ScreenWrapper } from "../../components/ScreenWrapper";
 import { User, useUser } from "../context/UserContext";
 
+// Enable LayoutAnimation for Android
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental
 ) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
   Beirut: { lat: 33.8938, lng: 35.5018 },
@@ -69,22 +75,54 @@ export default function Profile() {
     lat: number;
     lng: number;
   } | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
+
+  // Modals
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+
+  // Slide Animation for Bottom Sheet
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
-    if (user) {
-      initializeForm(user);
-    }
+    if (user) initializeForm(user);
   }, [user, isEditing]);
 
+  // Handle Bottom Sheet Animation
+  useEffect(() => {
+    if (photoModalVisible) {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 20,
+        stiffness: 90,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: SCREEN_HEIGHT,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [photoModalVisible]);
+
   const initializeForm = (userData: User) => {
+    // Strip timestamp from URL if present to prevent re-saving it
+    let cleanImage = userData.profileImageUrl;
+    if (
+      cleanImage &&
+      typeof cleanImage === "string" &&
+      cleanImage.includes("?t=")
+    ) {
+      cleanImage = cleanImage.split("?t=")[0];
+    }
+
     setFormData({
       fullName: userData.fullName,
       email: userData.email,
       phoneNumber: userData.phoneNumber,
       profileBio: userData.profileBio,
       city: userData.city,
-      profileImageUrl: userData.profileImageUrl,
+      profileImageUrl: cleanImage,
       latitude: userData.latitude,
       longitude: userData.longitude,
     });
@@ -111,14 +149,6 @@ export default function Profile() {
       newErrors.fullName = "Full name is required";
       valid = false;
     }
-    if (!formData.email?.trim() || !formData.email.includes("@")) {
-      newErrors.email = "Valid email is required";
-      valid = false;
-    }
-    if (!formData.phoneNumber?.trim()) {
-      newErrors.phoneNumber = "Phone number is required";
-      valid = false;
-    }
     setErrors(newErrors);
     return valid;
   };
@@ -136,7 +166,7 @@ export default function Profile() {
         email: formData.email,
         phoneNumber: formData.phoneNumber,
         profileBio: formData.profileBio,
-        profileImageUrl: formData.profileImageUrl,
+        profileImageUrl: formData.profileImageUrl, // Can be null (deleted) or Base64 (new)
         city: selectedCity,
         latitude: pinCoords?.lat,
         longitude: pinCoords?.lng,
@@ -147,41 +177,81 @@ export default function Profile() {
       setIsEditing(false);
     } catch (error: any) {
       console.error("Save Error:", error);
-      const msg =
-        error.response?.data?.message ||
-        error.response?.data?.title ||
-        "Failed to update profile.";
-      Alert.alert("Error", typeof msg === "object" ? JSON.stringify(msg) : msg);
+      // Check for 'Entity Too Large' error (413)
+      if (error.response && error.response.status === 413) {
+        Alert.alert(
+          "Error",
+          "The image is too large. Please choose a smaller photo."
+        );
+      } else {
+        const msg =
+          error.response?.data?.message || "Failed to update profile.";
+        Alert.alert(
+          "Error",
+          typeof msg === "object" ? JSON.stringify(msg) : msg
+        );
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleImagePick = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission Needed", "We need access to your photos.");
-      return;
-    }
+  // --- New Photo Logic ---
 
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+  const handlePhotoOption = async (option: "camera" | "gallery" | "remove") => {
+    setPhotoModalVisible(false); // Close the sheet
+
+    setTimeout(async () => {
+      if (option === "remove") {
+        setFormData((prev) => ({ ...prev, profileImageUrl: null as any }));
+        return;
+      }
+
+      const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.2,
+        quality: 0.2, // Keep quality low to avoid Payload Too Large errors
         base64: true,
-      });
+      };
 
-      if (!result.canceled && result.assets[0].base64) {
-        const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        setFormData((prev) => ({ ...prev, profileImageUrl: base64Img }));
+      try {
+        let result;
+        if (option === "camera") {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== "granted") {
+            Alert.alert(
+              "Permission Denied",
+              "Camera access is needed to take a photo."
+            );
+            return;
+          }
+          result = await ImagePicker.launchCameraAsync(options);
+        } else {
+          const { status } =
+            await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== "granted") {
+            Alert.alert(
+              "Permission Denied",
+              "Gallery access is needed to pick a photo."
+            );
+            return;
+          }
+          result = await ImagePicker.launchImageLibraryAsync(options);
+        }
+
+        if (!result.canceled && result.assets && result.assets[0].base64) {
+          const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
+          setFormData((prev) => ({ ...prev, profileImageUrl: base64Img }));
+        }
+      } catch (e) {
+        console.log("Image Picker Error:", e);
+        Alert.alert("Error", "An error occurred while picking the image.");
       }
-    } catch (e) {
-      console.log("Image Picker Error:", e);
-      Alert.alert("Error", "Failed to pick image.");
-    }
+    }, 300); // Small delay to let modal close smoothly
   };
+
+  // --- Location Logic ---
 
   const handleLocationPress = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -192,7 +262,6 @@ export default function Profile() {
         const { latitude, longitude } = location.coords;
 
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
         setPinCoords({ lat: latitude, lng: longitude });
         setRegion({
           latitude,
@@ -214,12 +283,12 @@ export default function Profile() {
       }
     } else {
       setIsLocationFixed(false);
-      setModalVisible(true);
+      setCityModalVisible(true);
     }
   };
 
   const handleCitySelect = (city: string) => {
-    setModalVisible(false);
+    setCityModalVisible(false);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSelectedCity(city);
     setIsLocationFixed(false);
@@ -291,7 +360,6 @@ export default function Profile() {
 
   return (
     <ScreenWrapper scrollable={true} style={styles.container}>
-      {/* Standardized Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity
@@ -301,18 +369,16 @@ export default function Profile() {
             <Ionicons name="arrow-back" size={24} color="#0F172A" />
           </TouchableOpacity>
         </View>
-
         <Text style={styles.headerTitle}>
           {isEditing ? "Edit Profile" : "My Profile"}
         </Text>
-
         <View style={styles.headerRight}>
           <TouchableOpacity
             onPress={() => {
               if (isEditing) {
                 setIsEditing(false);
                 setErrors({});
-                if (user) initializeForm(user);
+                initializeForm(user);
               } else {
                 setIsEditing(true);
               }
@@ -350,7 +416,7 @@ export default function Profile() {
             {isEditing && (
               <TouchableOpacity
                 style={styles.cameraButton}
-                onPress={handleImagePick}
+                onPress={() => setPhotoModalVisible(true)}
               >
                 <Ionicons name="camera" size={20} color="#FFF" />
               </TouchableOpacity>
@@ -390,7 +456,7 @@ export default function Profile() {
           {isEditing ? (
             <TouchableOpacity
               style={styles.citySelector}
-              onPress={() => setModalVisible(true)}
+              onPress={() => setCityModalVisible(true)}
             >
               <Text style={styles.citySelectorText}>
                 {selectedCity || "Select City"}
@@ -446,28 +512,24 @@ export default function Profile() {
             )}
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={async () => {
-              await logout();
-            }}
-          >
+          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
             <Text style={styles.logoutButtonText}>Log Out</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {/* --- CITY MODAL --- */}
       <Modal
-        visible={modalVisible}
+        visible={cityModalVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => setCityModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select City</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity onPress={() => setCityModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
@@ -498,14 +560,71 @@ export default function Profile() {
           </View>
         </View>
       </Modal>
+
+      {/* --- INSTAGRAM STYLE BOTTOM SHEET --- */}
+      <Modal
+        visible={photoModalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <View style={styles.backdropContainer}>
+          <TouchableWithoutFeedback onPress={() => setPhotoModalVisible(false)}>
+            <View style={styles.backdrop} />
+          </TouchableWithoutFeedback>
+
+          <Animated.View
+            style={[
+              styles.sheetContainer,
+              { transform: [{ translateY: slideAnim }] },
+            ]}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Change Profile Photo</Text>
+
+            <TouchableOpacity
+              style={styles.sheetOption}
+              onPress={() => handlePhotoOption("camera")}
+            >
+              <Ionicons name="camera-outline" size={24} color="#0F172A" />
+              <Text style={styles.sheetOptionText}>Take Photo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sheetOption}
+              onPress={() => handlePhotoOption("gallery")}
+            >
+              <Ionicons name="images-outline" size={24} color="#0F172A" />
+              <Text style={styles.sheetOptionText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            {(formData.profileImageUrl || user?.profileImageUrl) && (
+              <TouchableOpacity
+                style={styles.sheetOption}
+                onPress={() => handlePhotoOption("remove")}
+              >
+                <Ionicons name="trash-outline" size={24} color="#EF4444" />
+                <Text style={[styles.sheetOptionText, { color: "#EF4444" }]}>
+                  Remove Current Photo
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.sheetOption, styles.sheetCancelOption]}
+              onPress={() => setPhotoModalVisible(false)}
+            >
+              <Text style={styles.sheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-
-  // ✅ Standardized Header Styles
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -529,7 +648,6 @@ const styles = StyleSheet.create({
   iconBtn: { padding: 4 },
   editButton: { padding: 4 },
   editButtonText: { color: "#2563EB", fontWeight: "600", fontSize: 16 },
-
   centerContainer: {
     flex: 1,
     justifyContent: "center",
@@ -551,9 +669,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   loginBtnText: { color: "#FFF", fontWeight: "600" },
-
   content: { padding: 20, paddingBottom: 40 },
-
   avatarContainer: { alignItems: "center", marginBottom: 24 },
   avatarWrapper: { position: "relative" },
   avatar: {
@@ -564,9 +680,14 @@ const styles = StyleSheet.create({
     borderColor: "#FFF",
   },
   avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: "#CBD5E1",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#FFF",
   },
   avatarInitials: { fontSize: 36, fontWeight: "700", color: "#FFF" },
   cameraButton: {
@@ -589,7 +710,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   userRole: { fontSize: 14, color: "#64748B", marginTop: 4 },
-
   section: {
     backgroundColor: "#FFF",
     borderRadius: 12,
@@ -606,7 +726,6 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 16,
   },
-
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: "600", color: "#64748B", marginBottom: 6 },
   input: {
@@ -622,7 +741,6 @@ const styles = StyleSheet.create({
   fieldErrorText: { color: "#EF4444", fontSize: 12, marginTop: 4 },
   textArea: { height: 100, textAlignVertical: "top" },
   readOnlyText: { fontSize: 15, color: "#334155", paddingVertical: 4 },
-
   citySelector: {
     backgroundColor: "#F1F5F9",
     borderRadius: 8,
@@ -636,7 +754,6 @@ const styles = StyleSheet.create({
   citySelectorText: { color: "#0F172A", fontSize: 15 },
   gpsButton: { flexDirection: "row", alignItems: "center", marginTop: 12 },
   gpsButtonText: { color: "#2563EB", fontWeight: "600", marginLeft: 6 },
-
   mapContainer: {
     height: 150,
     borderRadius: 12,
@@ -646,7 +763,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   map: { width: "100%", height: "100%" },
-
   saveButton: {
     backgroundColor: "#2563EB",
     paddingVertical: 16,
@@ -661,7 +777,6 @@ const styles = StyleSheet.create({
   },
   saveButtonDisabled: { backgroundColor: "#93C5FD" },
   saveButtonText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
-
   logoutButton: {
     backgroundColor: "#FEE2E2",
     paddingVertical: 16,
@@ -671,6 +786,7 @@ const styles = StyleSheet.create({
   },
   logoutButtonText: { color: "#EF4444", fontSize: 16, fontWeight: "700" },
 
+  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -698,4 +814,61 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F1F5F9",
   },
   cityOptionText: { fontSize: 16, color: "#334155" },
+
+  // New Sheet Styles
+  backdropContainer: { flex: 1, justifyContent: "flex-end" },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  sheetContainer: {
+    backgroundColor: "#FFF",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
+    elevation: 20,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  sheetOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  sheetOptionText: {
+    fontSize: 16,
+    color: "#0F172A",
+    marginLeft: 16,
+    fontWeight: "500",
+  },
+  sheetCancelOption: {
+    borderBottomWidth: 0,
+    marginTop: 10,
+    justifyContent: "center",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  sheetCancelText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#475569",
+    textAlign: "center",
+  },
 });
