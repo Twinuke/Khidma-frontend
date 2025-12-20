@@ -19,7 +19,14 @@ import {
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
-const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "😡"];
+// Define the reaction options
+const REACTION_OPTIONS = [
+  { type: "Like", emoji: "👍" },
+  { type: "Celebrate", emoji: "👏" },
+  { type: "Love", emoji: "❤️" },
+  { type: "Funny", emoji: "😂" },
+  { type: "Insightful", emoji: "💡" },
+];
 
 export default function SocialPage() {
   const { user } = useUser();
@@ -29,16 +36,14 @@ export default function SocialPage() {
 
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [connectionsCount, setConnectionsCount] = useState(0);
-
   const flatListRef = useRef<FlatList>(null);
+
+  // Interaction State
+  const [reactionPickerId, setReactionPickerId] = useState<number | null>(null);
 
   // Comments State
   const [activePostId, setActivePostId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
-  const [reactionPickerPostId, setReactionPickerPostId] = useState<
-    number | null
-  >(null);
 
   const activePost = posts.find((p) => p.postId === activePostId);
 
@@ -60,6 +65,7 @@ export default function SocialPage() {
     if (user?.userId) fetchFeed();
   }, [user?.userId]);
 
+  // Scroll to target post if redirected from a notification
   useEffect(() => {
     if (posts.length > 0 && targetPostId) {
       const index = posts.findIndex((p) => p.postId === targetPostId);
@@ -77,9 +83,6 @@ export default function SocialPage() {
 
   const fetchFeed = async () => {
     try {
-      const connRes = await api.get(`/Social/connections/${user?.userId}`);
-      setConnectionsCount(connRes.data.length);
-
       const res = await api.get(`/Social/feed/${user?.userId}`);
       setPosts(res.data);
     } catch (e) {
@@ -89,59 +92,31 @@ export default function SocialPage() {
     }
   };
 
-  const handleLike = async (postId: number) => {
+  /**
+   * Consolidated Interaction Handler (Requirement 1, 2 & 3)
+   * Handles both standard Likes and specific Reactions.
+   */
+  const handleInteraction = async (postId: number, reaction: string | null) => {
+    setReactionPickerId(null);
+
+    // Optimistic UI Update
     setPosts((prev) =>
       prev.map((p) => {
         if (p.postId === postId) {
-          const isLiked = p.isLiked;
-          return {
-            ...p,
-            isLiked: !isLiked,
-            likesCount: isLiked ? p.likesCount - 1 : p.likesCount + 1,
-          };
-        }
-        return p;
-      })
-    );
-    try {
-      await api.post(`/Social/posts/${postId}/like?userId=${user?.userId}`);
-    } catch (e) {
-      console.log("Like failed", e);
-    }
-  };
-
-  // ✅ Fixed Reaction Toggle
-  const handleReaction = async (postId: number, reaction: string) => {
-    setReactionPickerPostId(null);
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.postId === postId) {
-          const currentReaction = p.myReaction;
-          const isRemoving = currentReaction === reaction; // Check if toggling off
-
-          let newReactions = [...(p.reactions || [])];
-
-          if (currentReaction) {
-            newReactions = newReactions
-              .map((r) =>
-                r.type === currentReaction ? { ...r, count: r.count - 1 } : r
-              )
-              .filter((r) => r.count > 0);
-          }
-
-          if (!isRemoving) {
-            const existing = newReactions.find((r) => r.type === reaction);
-            if (existing) {
-              existing.count += 1;
-            } else {
-              newReactions.push({ type: reaction, count: 1 });
-            }
-          }
+          const wasInteracted = p.isLiked;
+          const isRemoving =
+            reaction === null || (wasInteracted && p.myReaction === reaction);
 
           return {
             ...p,
+            isLiked: !isRemoving,
             myReaction: isRemoving ? null : reaction,
-            reactions: newReactions,
+            // Total interactions count updates based on whether we are adding or removing
+            likesCount: isRemoving
+              ? p.likesCount - 1
+              : wasInteracted
+              ? p.likesCount
+              : p.likesCount + 1,
           };
         }
         return p;
@@ -149,44 +124,15 @@ export default function SocialPage() {
     );
 
     try {
-      await api.post(`/Social/posts/react`, {
-        postId,
-        userId: user?.userId,
-        reaction,
-      });
+      // Calls the consolidated backend endpoint
+      await api.post(
+        `/Social/posts/${postId}/react?userId=${user?.userId}&reaction=${
+          reaction || ""
+        }`
+      );
     } catch (e) {
-      console.log("Reaction failed", e);
-    }
-  };
-
-  const handleLikeComment = async (commentId: number) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.postId === activePostId) {
-          const updatedComments = p.comments.map((c: any) => {
-            if (c.commentId === commentId) {
-              const isLiked = c.isLiked;
-              return {
-                ...c,
-                isLiked: !isLiked,
-                likesCount: isLiked
-                  ? (c.likesCount || 0) - 1
-                  : (c.likesCount || 0) + 1,
-              };
-            }
-            return c;
-          });
-          return { ...p, comments: updatedComments };
-        }
-        return p;
-      })
-    );
-    try {
-      await api.post(`/Social/comments/${commentId}/like`, {
-        userId: user?.userId,
-      });
-    } catch (e) {
-      console.log(e);
+      console.log("Interaction failed", e);
+      fetchFeed(); // Rollback on error
     }
   };
 
@@ -203,10 +149,7 @@ export default function SocialPage() {
           if (p.postId === activePostId) {
             return {
               ...p,
-              comments: [
-                ...p.comments,
-                { ...res.data, likesCount: 0, isLiked: false },
-              ],
+              comments: [...p.comments, res.data],
             };
           }
           return p;
@@ -230,15 +173,13 @@ export default function SocialPage() {
     const formattedDate = formatDateTime(item.createdAt);
     const isTarget = item.postId === targetPostId;
 
+    // Determine the emoji for the current user's reaction
+    const currentEmoji = REACTION_OPTIONS.find(
+      (r) => r.type === item.myReaction
+    )?.emoji;
+
     return (
-      <View
-        style={[styles.card, isTarget && styles.highlightCard]}
-        onStartShouldSetResponder={() => {
-          if (reactionPickerPostId === item.postId)
-            setReactionPickerPostId(null);
-          return false;
-        }}
-      >
+      <View style={[styles.card, isTarget && styles.highlightCard]}>
         <View style={styles.headerRow}>
           <Image
             source={{
@@ -254,103 +195,64 @@ export default function SocialPage() {
         </View>
 
         <View style={styles.body}>
-          {isJobPosted ? (
-            <Text style={styles.text}>
-              posted a new job:{" "}
-              <Text
-                style={styles.linkText}
-                onPress={() =>
-                  navigation.navigate("JobDetails", { jobId: item.jobId })
-                }
-              >
-                {item.jobTitle}
-              </Text>
+          <Text style={styles.text}>
+            {isJobPosted ? "posted a new job: " : "had their bid accepted on "}
+            <Text
+              style={styles.linkText}
+              onPress={() =>
+                navigation.navigate("JobDetails", { jobId: item.jobId })
+              }
+            >
+              {item.jobTitle}
             </Text>
-          ) : (
-            <Text style={styles.text}>
-              had their bid accepted on{" "}
-              <Text
-                style={styles.linkText}
-                onPress={() =>
-                  navigation.navigate("JobDetails", { jobId: item.jobId })
-                }
-              >
-                {item.jobTitle}
-              </Text>
-            </Text>
-          )}
+          </Text>
         </View>
 
-        {item.reactions && item.reactions.length > 0 && (
-          <View style={styles.reactionsList}>
-            {item.reactions.map((r: any) => (
-              <View key={r.type} style={styles.reactionBubble}>
-                <Text style={{ fontSize: 12 }}>
-                  {r.type} {r.count}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
         <View style={styles.statsRow}>
-          <Text style={styles.statText}>{item.likesCount} Likes</Text>
+          <Text style={styles.statText}>{item.likesCount} Interactions</Text>
           <TouchableOpacity onPress={() => openComments(item.postId)}>
             <Text style={styles.statText}>{item.comments.length} Comments</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.actions, { zIndex: 10 }]}>
-          {reactionPickerPostId === item.postId && (
-            <View style={styles.reactionContainer}>
-              {REACTIONS.map((emoji) => (
+        <View style={styles.actions}>
+          {/* Reaction Popup (Requirement 2) - Visible on Long Press */}
+          {reactionPickerId === item.postId && (
+            <View style={styles.reactionPopup}>
+              {REACTION_OPTIONS.map((opt) => (
                 <TouchableOpacity
-                  key={emoji}
-                  onPress={() => handleReaction(item.postId, emoji)}
+                  key={opt.type}
+                  onPress={() => handleInteraction(item.postId, opt.type)}
                   style={styles.emojiBtn}
                 >
-                  <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                  <Text style={{ fontSize: 24 }}>{opt.emoji}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
 
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => handleLike(item.postId)}
-          >
-            <Ionicons
-              name={item.isLiked ? "heart" : "heart-outline"}
-              size={22}
-              color={item.isLiked ? "#EF4444" : "#64748B"}
-            />
-            <Text
-              style={[styles.actionText, item.isLiked && { color: "#EF4444" }]}
-            >
-              Like
-            </Text>
-          </TouchableOpacity>
-
+          {/* Combined Like/React Button (Requirement 1 & 2) */}
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() =>
-              setReactionPickerPostId(
-                reactionPickerPostId === item.postId ? null : item.postId
-              )
+              handleInteraction(item.postId, item.isLiked ? null : "Like")
             }
+            onLongPress={() => setReactionPickerId(item.postId)}
+            delayLongPress={300}
           >
-            {item.myReaction ? (
-              <Text style={{ fontSize: 20 }}>{item.myReaction}</Text>
+            {item.isLiked && item.myReaction !== "Like" ? (
+              <Text style={{ fontSize: 20 }}>{currentEmoji}</Text>
             ) : (
-              <Ionicons name="happy-outline" size={22} color="#64748B" />
+              <Ionicons
+                name={item.isLiked ? "heart" : "heart-outline"}
+                size={22}
+                color={item.isLiked ? "#2563EB" : "#64748B"}
+              />
             )}
             <Text
-              style={[
-                styles.actionText,
-                item.myReaction && { color: "#2563EB" },
-              ]}
+              style={[styles.actionText, item.isLiked && { color: "#2563EB" }]}
             >
-              {item.myReaction ? "Reacted" : "React"}
+              {item.myReaction || "Like"}
             </Text>
           </TouchableOpacity>
 
@@ -398,6 +300,7 @@ export default function SocialPage() {
         />
       )}
 
+      {/* Comments Modal */}
       <Modal
         visible={activePostId !== null}
         animationType="slide"
@@ -434,28 +337,9 @@ export default function SocialPage() {
                     <Text style={styles.commentUser}>{item.user.fullName}</Text>
                     <Text style={styles.commentContent}>{item.content}</Text>
                   </View>
-                  <View style={styles.commentActions}>
-                    <Text style={styles.commentDate}>
-                      {formatDateTime(item.createdAt)}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleLikeComment(item.commentId)}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <Ionicons
-                        name={item.isLiked ? "heart" : "heart-outline"}
-                        size={14}
-                        color={item.isLiked ? "#EF4444" : "#94A3B8"}
-                      />
-                      <Text style={{ fontSize: 12, color: "#64748B" }}>
-                        {item.likesCount > 0 ? item.likesCount : "Like"}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={styles.commentDate}>
+                    {formatDateTime(item.createdAt)}
+                  </Text>
                 </View>
               </View>
             )}
@@ -527,20 +411,9 @@ const styles = StyleSheet.create({
   body: { marginBottom: 12 },
   text: { fontSize: 15, color: "#334155", lineHeight: 22 },
   linkText: { color: "#2563EB", fontWeight: "700" },
-  reactionsList: { flexDirection: "row", gap: 6, marginBottom: 10 },
-  reactionBubble: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
   statsRow: {
     flexDirection: "row",
-    gap: 12,
+    justifyContent: "space-between",
     marginBottom: 12,
     borderBottomWidth: 1,
     borderColor: "#F1F5F9",
@@ -552,21 +425,30 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     position: "relative",
   },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 8 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    padding: 8,
+    minWidth: 100,
+    justifyContent: "center",
+  },
   actionText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
-  reactionContainer: {
+  reactionPopup: {
     position: "absolute",
-    bottom: 50,
-    left: "20%",
+    bottom: 55,
+    left: 20,
     flexDirection: "row",
     backgroundColor: "#FFF",
     borderRadius: 30,
     padding: 8,
-    gap: 10,
-    elevation: 5,
+    gap: 12,
+    elevation: 10,
     shadowColor: "#000",
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    zIndex: 9999,
   },
   emojiBtn: { padding: 4 },
   modalContainer: { flex: 1, backgroundColor: "#FFF" },
@@ -601,13 +483,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   commentContent: { fontSize: 14, color: "#334155" },
-  commentActions: {
-    flexDirection: "row",
-    gap: 16,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-  commentDate: { fontSize: 12, color: "#94A3B8" },
+  commentDate: { fontSize: 12, color: "#94A3B8", marginTop: 4, marginLeft: 4 },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
