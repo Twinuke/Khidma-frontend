@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import {
   FlatList,
@@ -10,34 +11,29 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
+  StatusBar,
+  ActivityIndicator
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
 import { useChat } from "../context/ChatContext";
-import { useUser } from "../context/UserContext"; // ✅ Ensure this import
+import { useUser } from "../context/UserContext";
 
 export default function ChatScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation();
-
-  // ✅ 1. Get 'refreshCounts' from UserContext instead
-  const { user, refreshCounts } = useUser();
-
-  const {
-    connection,
-    connectToChat,
-    // refreshUnreadCount, // ❌ REMOVED: This no longer exists in ChatContext
-    setActiveConversationId,
-  } = useChat();
-
   const insets = useSafeAreaInsets();
+
+  const { user, refreshCounts } = useUser();
+  const { connection, connectToChat, setActiveConversationId } = useChat();
 
   const { conversationId, otherUser: paramOtherUser } = route.params;
   const [otherUser, setOtherUser] = useState(paramOtherUser);
-
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState("");
   const flatListRef = useRef<FlatList>(null);
+  const [loadingHistory, setLoadingHistory] = useState(true);
 
   // ✅ Mark messages as read when entering screen
   useEffect(() => {
@@ -45,7 +41,6 @@ export default function ChatScreen() {
       markAsRead();
       setActiveConversationId(conversationId);
     }
-
     return () => {
       setActiveConversationId(null);
     };
@@ -53,10 +48,7 @@ export default function ChatScreen() {
 
   const markAsRead = async () => {
     try {
-      // Backend: Mark as read
       await api.put(`/Chat/read/${conversationId}/${user?.userId}`);
-
-      // ✅ Frontend: Refresh Global Badge (UserContext)
       refreshCounts();
     } catch (e) {
       console.log("Error marking read:", e);
@@ -109,6 +101,8 @@ export default function ChatScreen() {
       scrollToBottom();
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -134,25 +128,19 @@ export default function ChatScreen() {
   const renderMessage = ({ item }: { item: any }) => {
     const isMe = item.senderId === user?.userId;
     return (
-      <View
-        style={[
-          styles.bubbleWrapper,
-          isMe ? styles.myWrapper : styles.otherWrapper,
-        ]}
-      >
-        <View
-          style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}
-        >
-          <Text
-            style={[styles.msgText, isMe ? styles.myText : styles.otherText]}
-          >
+      <View style={[styles.bubbleWrapper, isMe ? styles.myWrapper : styles.otherWrapper]}>
+        {!isMe && (
+           <Image 
+              source={{ uri: otherUser?.profileImageUrl || "https://via.placeholder.com/40" }} 
+              style={styles.messageAvatar} 
+           />
+        )}
+        <View style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}>
+          <Text style={[styles.msgText, isMe ? styles.myText : styles.otherText]}>
             {item.content}
           </Text>
-          <Text style={[styles.timeText, isMe ? { color: "#E2E8F0" } : null]}>
-            {new Date(item.sentAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+          <Text style={[styles.timeText, isMe ? { color: "rgba(255,255,255,0.7)" } : { color: "#94A3B8" }]}>
+            {new Date(item.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </Text>
         </View>
       </View>
@@ -160,13 +148,37 @@ export default function ChatScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#0F172A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{otherUser?.fullName || "Chat"}</Text>
-        <View style={{ width: 24 }} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+
+      {/* ✅ 1. Consistent Gradient Header */}
+      <View style={styles.headerShadow}>
+        <LinearGradient
+            colors={["#0F172A", "#1E293B", "#334155"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.headerGradient, { paddingTop: insets.top + 10 }]}
+        >
+            <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#FFF" />
+                </TouchableOpacity>
+                
+                <View style={styles.userInfo}>
+                    <Image 
+                        source={{ uri: otherUser?.profileImageUrl || "https://via.placeholder.com/100" }} 
+                        style={styles.headerAvatar} 
+                    />
+                    <View>
+                        <Text style={styles.headerTitle}>{otherUser?.fullName || "Chat"}</Text>
+                        <Text style={styles.headerStatus}>{otherUser?.jobTitle || "Online"}</Text>
+                    </View>
+                </View>
+
+                {/* Optional: Add a call button or menu later */}
+                <View style={{ width: 40 }} /> 
+            </View>
+        </LinearGradient>
       </View>
 
       <KeyboardAvoidingView
@@ -174,26 +186,32 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) =>
-            item.messageId?.toString() || Math.random().toString()
-          }
-          renderItem={renderMessage}
-          contentContainerStyle={styles.list}
-          onContentSizeChange={scrollToBottom}
-        />
+        {loadingHistory ? (
+           <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+              <ActivityIndicator size="large" color="#2563EB" />
+           </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.messageId?.toString() || Math.random().toString()}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.list}
+            onContentSizeChange={scrollToBottom}
+          />
+        )}
 
-        <View style={styles.inputContainer}>
+        {/* ✅ 2. Modern Input Area */}
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           <TextInput
             style={styles.input}
             value={text}
             onChangeText={setText}
             placeholder="Type a message..."
+            placeholderTextColor="#94A3B8"
             multiline
           />
-          <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
+          <TouchableOpacity onPress={sendMessage} style={styles.sendBtn} disabled={!text.trim()}>
             <Ionicons name="send" size={20} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -204,38 +222,77 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderColor: "#E2E8F0",
+  
+  // Header Styles (Matching JobDetails/Profile)
+  headerShadow: {
+      borderBottomLeftRadius: 24, 
+      borderBottomRightRadius: 24,
+      overflow: 'hidden',
+      shadowColor: "#000",
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 5,
+      backgroundColor: "#0F172A"
   },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
+  headerGradient: {
+      paddingHorizontal: 16,
+      paddingBottom: 20,
+  },
+  headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+  },
+  backBtn: {
+      width: 40, height: 40,
+      justifyContent: 'center', alignItems: 'center',
+      backgroundColor: 'rgba(255,255,255,0.15)',
+      borderRadius: 20
+  },
+  userInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      marginLeft: 12
+  },
+  headerAvatar: {
+      width: 44, height: 44,
+      borderRadius: 22,
+      borderWidth: 2,
+      borderColor: 'rgba(255,255,255,0.2)',
+      marginRight: 10
+  },
+  headerTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: '#FFF'
+  },
+  headerStatus: {
+      fontSize: 12,
+      color: 'rgba(255,255,255,0.7)',
+      marginTop: 2
+  },
+
+  // List & Bubble Styles
   list: { padding: 16, paddingBottom: 20 },
-  bubbleWrapper: { marginBottom: 12, flexDirection: "row" },
+  bubbleWrapper: { marginBottom: 12, flexDirection: "row", alignItems: 'flex-end' },
   myWrapper: { justifyContent: "flex-end" },
   otherWrapper: { justifyContent: "flex-start" },
-  bubble: { maxWidth: "80%", padding: 12, borderRadius: 16 },
-  myBubble: { backgroundColor: "#2563EB", borderBottomRightRadius: 2 },
-  otherBubble: {
-    backgroundColor: "#FFF",
-    borderBottomLeftRadius: 2,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+  messageAvatar: {
+      width: 28, height: 28, borderRadius: 14, marginRight: 8, marginBottom: 2,
+      backgroundColor: '#CBD5E1'
   },
+  bubble: { maxWidth: "75%", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  myBubble: { backgroundColor: "#2563EB", borderBottomRightRadius: 4 },
+  otherBubble: { backgroundColor: "#FFF", borderBottomLeftRadius: 4, borderWidth: 1, borderColor: "#E2E8F0" },
+  
   msgText: { fontSize: 15, lineHeight: 22 },
   myText: { color: "#FFF" },
   otherText: { color: "#1E293B" },
-  timeText: {
-    fontSize: 10,
-    marginTop: 4,
-    alignSelf: "flex-end",
-    opacity: 0.7,
-    color: "#64748B",
-  },
+  
+  timeText: { fontSize: 10, marginTop: 4, alignSelf: "flex-end" },
+
+  // Input Styles
   inputContainer: {
     flexDirection: "row",
     padding: 12,
@@ -247,11 +304,24 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     backgroundColor: "#F1F5F9",
-    borderRadius: 20,
+    borderRadius: 24,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginRight: 10,
     maxHeight: 100,
+    fontSize: 15,
+    color: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#E2E8F0"
   },
-  sendBtn: { backgroundColor: "#2563EB", padding: 10, borderRadius: 20 },
+  sendBtn: {
+      width: 44, height: 44,
+      backgroundColor: "#2563EB",
+      borderRadius: 22,
+      justifyContent: 'center', alignItems: 'center',
+      shadowColor: "#2563EB",
+      shadowOpacity: 0.3,
+      shadowOffset: {width: 0, height: 2},
+      elevation: 4
+  },
 });

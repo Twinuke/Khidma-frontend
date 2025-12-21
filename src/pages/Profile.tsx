@@ -35,6 +35,7 @@ import * as Sharing from "expo-sharing";
 
 import api from "../config/api";
 import { User, useUser } from "../context/UserContext";
+import { MiniProfileSheet } from "../components/MiniProfileSheet"; // ✅ 1. Import Added
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -115,6 +116,10 @@ export default function Profile() {
   const [region, setRegion] = useState({ latitude: 33.8938, longitude: 35.5018, latitudeDelta: 0.05, longitudeDelta: 0.05 });
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
 
+  // ✅ 2. State for Mini Profile Sheet (Reviewer)
+  const [miniProfileVisible, setMiniProfileVisible] = useState(false);
+  const [selectedReviewerId, setSelectedReviewerId] = useState<number | null>(null);
+
   // Animation Effect for Photo Modal
   useEffect(() => {
     if (photoModalVisible) {
@@ -189,7 +194,8 @@ export default function Profile() {
   const handleConnect = async () => {
       setConnecting(true);
       try {
-          await api.post('/Social/connect', { requesterId: contextUser?.userId, targetId: targetUserId });
+          // Send receiverId instead of targetId to fix 404/500 errors
+          await api.post('/Social/connect', { requesterId: contextUser?.userId, receiverId: targetUserId });
           setConnectionStatus("Pending");
           Alert.alert("Request Sent", "Connection request sent.");
       } catch (e: any) { Alert.alert("Error", e.response?.data || "Could not send request."); } 
@@ -207,7 +213,6 @@ export default function Profile() {
       if (!newComment.trim()) { Alert.alert("Error", "Please write a comment."); return; }
       setSubmittingReview(true);
       try {
-          // ✅ FIX: Use revieweeId
           await api.post('/Reviews', {
               reviewerId: contextUser?.userId,
               revieweeId: targetUserId, 
@@ -219,7 +224,6 @@ export default function Profile() {
           setNewComment("");
           setNewRating(5);
           
-          // ✅ FIX: Immediately refresh both lists
           await Promise.all([
               fetchReviews(targetUserId!),
               fetchFullProfile(targetUserId!)
@@ -600,7 +604,7 @@ export default function Profile() {
                 </View>
             </View>
 
-            {/* ✅ REVIEWS SECTION */}
+            {/* ✅ REVIEWS SECTION (UPDATED) */}
             <View style={styles.section}>
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
                     <Text style={styles.sectionHeader}>Reviews</Text>
@@ -614,11 +618,23 @@ export default function Profile() {
                     reviews.map((rev, index) => (
                         <View key={index} style={styles.reviewCard}>
                             <View style={styles.reviewHeader}>
-                                <Image source={{uri: rev.reviewer?.profileImageUrl || "https://via.placeholder.com/50"}} style={styles.reviewAvatar} />
-                                <View>
-                                    <Text style={styles.reviewerName}>{rev.reviewer?.fullName || "User"}</Text>
-                                    <Text style={styles.reviewDate}>{new Date(rev.createdAt).toLocaleDateString()}</Text>
-                                </View>
+                                {/* ✅ 3. Make Profile Interactive */}
+                                <TouchableOpacity 
+                                    style={{flexDirection: 'row', alignItems: 'center', flex: 1}} 
+                                    onPress={() => {
+                                        if (rev.reviewer?.userId) {
+                                            setSelectedReviewerId(rev.reviewer.userId);
+                                            setMiniProfileVisible(true);
+                                        }
+                                    }}
+                                >
+                                    <Image source={{uri: rev.reviewer?.profileImageUrl || "https://via.placeholder.com/50"}} style={styles.reviewAvatar} />
+                                    <View>
+                                        <Text style={styles.reviewerName}>{rev.reviewer?.fullName || "User"}</Text>
+                                        <Text style={styles.reviewDate}>{new Date(rev.createdAt).toLocaleDateString()}</Text>
+                                    </View>
+                                </TouchableOpacity>
+                                
                                 <View style={{marginLeft: 'auto'}}>{renderStars(rev.rating)}</View>
                             </View>
                             <Text style={styles.reviewComment}>{rev.comment}</Text>
@@ -701,6 +717,13 @@ export default function Profile() {
               </ScrollView>
           </View>
       </Modal>
+
+      {/* ✅ 4. Add Mini Profile Sheet Component */}
+      <MiniProfileSheet
+        visible={miniProfileVisible}
+        userId={selectedReviewerId}
+        onClose={() => setMiniProfileVisible(false)}
+      />
     </View>
   );
 }

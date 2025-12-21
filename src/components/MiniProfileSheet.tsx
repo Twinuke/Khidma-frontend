@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Dimensions,
   Image,
   Modal,
+  PanResponder,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -25,11 +26,41 @@ interface MiniProfileSheetProps {
 
 export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetProps) => {
   const navigation = useNavigation<any>();
-  const slideAnim = React.useRef(new Animated.Value(height)).current;
+  const slideAnim = useRef(new Animated.Value(height)).current;
   
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [aiProfile, setAiProfile] = useState<any>(null);
+
+  // ✅ 1. PanResponder for Drag Gestures
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only capture gesture if dragging vertically significantly
+        return Math.abs(gestureState.dy) > 5;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow dragging downwards (positive dy)
+        if (gestureState.dy > 0) {
+          slideAnim.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // If dragged down more than 100px or flicked down quickly, close it
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          onClose(); // Parent 'visible' prop will trigger the useEffect exit animation
+        } else {
+          // Snap back to open position
+          Animated.spring(slideAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            bounciness: 4,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     if (visible && userId) {
@@ -37,6 +68,7 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
       setAiProfile(null);
       setLoading(true);
       
+      // Reset position to 0 (Open)
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
@@ -45,6 +77,7 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
 
       fetchData(userId);
     } else {
+      // Slide down to close
       Animated.timing(slideAnim, {
         toValue: height,
         duration: 200,
@@ -75,8 +108,6 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
 
   const handleViewFullProfile = () => {
     onClose();
-    // ✅ FIX: Navigate to 'UserProfile' (Stack) instead of 'Profile' (Tab)
-    // This allows the "Back" button to work correctly.
     navigation.navigate('UserProfile', { userId });
   };
 
@@ -89,17 +120,23 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
   return (
     <Modal visible={visible} transparent onRequestClose={onClose} animationType="none">
       <View style={styles.backdropContainer}>
+        {/* Tap background to close */}
         <TouchableWithoutFeedback onPress={onClose}>
           <View style={styles.backdrop} />
         </TouchableWithoutFeedback>
 
+        {/* ✅ 2. Attach PanResponder Handlers to Animated.View */}
         <Animated.View
           style={[
             styles.sheet,
             { transform: [{ translateY: slideAnim }] },
           ]}
+          {...panResponder.panHandlers}
         >
-          <View style={styles.handle} />
+          {/* Handle Bar Indicator */}
+          <View style={styles.handleContainer}>
+             <View style={styles.handle} />
+          </View>
 
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -116,8 +153,6 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
                 />
                 <View style={styles.headerInfo}>
                   <Text style={styles.name}>{user.fullName}</Text>
-                  
-                  {/* ✅ FIX: Correctly display Client vs Freelancer */}
                   <Text style={styles.jobTitle}>
                     {user.userType === 1 ? "Client" : (user.jobTitle || "Freelancer")}
                   </Text>
@@ -168,17 +203,28 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    paddingHorizontal: 24,
     paddingBottom: 40,
     minHeight: 300,
+    // Add shadow to make it look like a sheet
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  handleContainer: {
+      width: '100%',
+      alignItems: 'center',
+      paddingVertical: 15,
+      // Larger hit slop for dragging from top
+      paddingBottom: 5,
   },
   handle: {
     width: 40,
     height: 4,
     backgroundColor: "#E2E8F0",
     borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 20,
   },
   loadingContainer: { height: 200, justifyContent: 'center', alignItems: 'center' },
   

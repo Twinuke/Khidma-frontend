@@ -10,7 +10,6 @@ import {
   Image,
   Modal,
   PanResponder,
-  Pressable,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -18,14 +17,15 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Alert
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-// ✅ THEME COLORS (Matches Jobs Page)
+// ✅ THEME COLORS
 const COLORS = {
   bg: "#F8FAFC",
   card: "#FFFFFF",
@@ -36,7 +36,6 @@ const COLORS = {
   primary: "#2563EB",
   success: "#10B981",
   danger: "#EF4444",
-  accent: "#8B5CF6", 
   backdrop: "rgba(15, 23, 42, 0.6)",
 };
 
@@ -87,7 +86,7 @@ export default function Network() {
 
   const handleAction = async (connectionId: number, action: "accept" | "reject") => {
     try {
-      // Optimistic Update: Remove item immediately for speed
+      // Optimistic Update
       setData((prev) => prev.filter((item) => item.connectionId !== connectionId));
       
       const endpoint = action === "accept" 
@@ -101,11 +100,30 @@ export default function Network() {
     }
   };
 
+  // ✅ FIXED: Handle Chat Opening Correctly
+  const handleMessage = async (targetUser: any) => {
+    if (!user?.userId) return;
+    try {
+      // 1. Get or Create Conversation ID first
+      const res = await api.post("/Chat/open", {
+        user1Id: user.userId,
+        user2Id: targetUser.userId
+      });
+
+      // 2. Navigate with VALID conversationId
+      navigation.navigate("ChatScreen", { 
+        conversationId: res.data.conversationId, // ✅ No more null
+        otherUser: targetUser 
+      });
+    } catch (e) {
+      console.log("Chat Open Error", e);
+      Alert.alert("Error", "Could not open chat.");
+    }
+  };
+
   const openProfilePreview = (targetUser: any) => {
     setSelectedUser(targetUser);
     setModalVisible(true);
-    
-    // Slide Up Animation
     Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
         Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 12 }),
@@ -124,13 +142,11 @@ export default function Network() {
 
   const navigateToFullProfile = () => {
       closeProfilePreview();
-      // Wait for modal to close before pushing screen
       setTimeout(() => {
           navigation.navigate("UserProfile", { userId: selectedUser?.userId });
       }, 300);
   };
 
-  // Pan Responder for Drag-to-Dismiss
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -143,11 +159,7 @@ export default function Network() {
     })
   ).current;
 
-  // --- Render Items ---
   const renderItem = ({ item }: { item: any }) => {
-    // Determine which user object to show (Requester vs Connected User)
-    // The API might return different structures based on "pending" vs "connected"
-    // Adjust logic: usually `item.requester` is the person who added you in pending list
     const displayUser = activeTab === "Requests" ? item.requester : (item.requesterId === user?.userId ? item.receiver : item.requester);
     
     if (!displayUser) return null;
@@ -159,7 +171,6 @@ export default function Network() {
         onPress={() => openProfilePreview(displayUser)}
       >
         <View style={styles.cardRow}>
-            {/* Avatar */}
             {displayUser.profileImageUrl ? (
                 <Image source={{ uri: displayUser.profileImageUrl }} style={styles.avatar} />
             ) : (
@@ -168,7 +179,6 @@ export default function Network() {
                 </View>
             )}
 
-            {/* Info */}
             <View style={styles.infoCol}>
                 <Text style={styles.name}>{displayUser.fullName}</Text>
                 <Text style={styles.role}>{displayUser.jobTitle || displayUser.userType}</Text>
@@ -181,7 +191,6 @@ export default function Network() {
             </View>
         </View>
 
-        {/* Actions */}
         <View style={styles.actionRow}>
             {activeTab === "Requests" ? (
                 <>
@@ -199,14 +208,10 @@ export default function Network() {
                     </TouchableOpacity>
                 </>
             ) : (
+                // ✅ UPDATED BUTTON: Calls handleMessage
                 <TouchableOpacity 
                     style={[styles.btn, styles.btnMessage]}
-                    onPress={() => navigation.navigate("ChatScreen", { 
-                        conversationId: null, // New chat
-                        receiverId: displayUser.userId,
-                        receiverName: displayUser.fullName,
-                        receiverAvatar: displayUser.profileImageUrl 
-                    })}
+                    onPress={() => handleMessage(displayUser)}
                 >
                     <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
                     <Text style={[styles.btnText, { color: COLORS.primary }]}>Message</Text>
@@ -221,7 +226,6 @@ export default function Network() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header */}
       <View style={styles.headerContainer}>
         <LinearGradient
             colors={["#0F172A", "#1E293B", "#334155"]}
@@ -234,12 +238,9 @@ export default function Network() {
                     <Text style={styles.headerTitle}>Network</Text>
                     <Text style={styles.headerSub}>Grow your professional circle.</Text>
                 </View>
-                <TouchableOpacity style={styles.addBtn} onPress={() => {}}>
-                    <Ionicons name="person-add-outline" size={22} color="#FFF" />
-                </TouchableOpacity>
+                {/* Optional: Add friend button */}
             </View>
 
-            {/* Tabs */}
             <View style={styles.tabContainer}>
                 {TABS.map((tab) => (
                     <TouchableOpacity 
@@ -256,7 +257,6 @@ export default function Network() {
         </LinearGradient>
       </View>
 
-      {/* List */}
       {loading ? (
           <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
       ) : (
@@ -280,7 +280,7 @@ export default function Network() {
           />
       )}
 
-      {/* ✅ PROFILE PREVIEW BOTTOM SHEET */}
+      {/* Profile Preview Modal */}
       <Modal transparent visible={modalVisible} animationType="none" onRequestClose={closeProfilePreview}>
         <View style={styles.modalOverlay}>
             <TouchableWithoutFeedback onPress={closeProfilePreview}>
@@ -291,14 +291,12 @@ export default function Network() {
                 style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}
                 {...panResponder.panHandlers}
             >
-                {/* Handle Bar */}
                 <View style={styles.handleContainer}>
                     <View style={styles.handle} />
                 </View>
 
                 {selectedUser && (
                     <View style={styles.sheetContent}>
-                        {/* Profile Header */}
                         <View style={styles.sheetHeader}>
                             {selectedUser.profileImageUrl ? (
                                 <Image source={{ uri: selectedUser.profileImageUrl }} style={styles.sheetAvatar} />
@@ -314,7 +312,6 @@ export default function Network() {
                             </View>
                         </View>
 
-                        {/* Bio */}
                         {selectedUser.bio && (
                             <View style={styles.section}>
                                 <Text style={styles.sectionLabel}>About</Text>
@@ -322,20 +319,6 @@ export default function Network() {
                             </View>
                         )}
 
-                        {/* Skills */}
-                        <View style={styles.section}>
-                            <Text style={styles.sectionLabel}>Skills</Text>
-                            <View style={styles.skillsRow}>
-                                {/* Mock skills if none exist */}
-                                {["Communication", "Teamwork"].map((s, i) => (
-                                    <View key={i} style={styles.skillPill}>
-                                        <Text style={styles.skillText}>{s}</Text>
-                                    </View>
-                                ))}
-                            </View>
-                        </View>
-
-                        {/* Full Profile Button */}
                         <TouchableOpacity style={styles.fullProfileBtn} onPress={navigateToFullProfile}>
                             <Text style={styles.fullProfileText}>View Full Profile</Text>
                             <Ionicons name="arrow-forward" size={18} color="#FFF" />
@@ -353,7 +336,6 @@ export default function Network() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   
-  // Header
   headerContainer: {
     backgroundColor: '#F8FAFC',
     borderBottomLeftRadius: 32,
@@ -365,20 +347,16 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
   headerSub: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  addBtn: { width: 44, height: 44, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
 
-  // Tabs
   tabContainer: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, padding: 4 },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12 },
   activeTab: { backgroundColor: '#FFF' },
   tabText: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.6)' },
   activeTabText: { color: COLORS.text, fontWeight: '700' },
 
-  // List
   listContent: { padding: 24, paddingBottom: 100 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // Card
   card: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, marginBottom: 16, shadowColor: "#64748B", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28 },
@@ -390,7 +368,6 @@ const styles = StyleSheet.create({
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   locText: { fontSize: 12, color: COLORS.subtext },
 
-  // Actions
   actionRow: { flexDirection: 'row', gap: 10 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   btnReject: { borderColor: COLORS.danger, backgroundColor: '#FFF' },
@@ -398,12 +375,10 @@ const styles = StyleSheet.create({
   btnMessage: { flexDirection: 'row', backgroundColor: '#EFF6FF', borderColor: '#EFF6FF' },
   btnText: { fontSize: 13, fontWeight: '700' },
 
-  // Empty State
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginTop: 16 },
   emptySub: { fontSize: 14, color: COLORS.subtext, marginTop: 6 },
 
-  // Modal / Bottom Sheet
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.backdrop },
   sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, paddingHorizontal: 24, maxHeight: '80%' },
@@ -423,10 +398,6 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   bioText: { fontSize: 15, color: COLORS.subtext, lineHeight: 22 },
   
-  skillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  skillPill: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  skillText: { fontSize: 13, color: COLORS.text, fontWeight: '600' },
-
   fullProfileBtn: { backgroundColor: COLORS.text, paddingVertical: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   fullProfileText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

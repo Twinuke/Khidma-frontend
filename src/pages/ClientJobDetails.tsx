@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
+import { MiniProfileSheet } from "../components/MiniProfileSheet"; 
 
 const Tabs = ({ activeTab, onTabChange }: any) => (
   <View style={styles.tabContainer}>
@@ -58,7 +59,10 @@ export default function ClientJobDetails() {
   const [activeTab, setActiveTab] = useState("proposals");
   const [processingId, setProcessingId] = useState<number | null>(null);
 
-  // ✅ Store IDs of people I am already connected with
+  // Mini Profile State
+  const [miniProfileVisible, setMiniProfileVisible] = useState(false);
+  const [selectedFreelancerId, setSelectedFreelancerId] = useState<number | null>(null);
+
   const [connectedUserIds, setConnectedUserIds] = useState<number[]>([]);
 
   useEffect(() => {
@@ -79,11 +83,9 @@ export default function ClientJobDetails() {
     }
   };
 
-  // ✅ Fetch my friends to check status
   const fetchConnections = async () => {
     try {
       const res = await api.get(`/Social/connections/${user?.userId}`);
-      // res.data is generic; assumes structure like [{ friend: { userId: 1 } }, ...]
       const ids = res.data.map((c: any) => c.friend?.userId);
       setConnectedUserIds(ids);
     } catch (e) {
@@ -136,7 +138,7 @@ export default function ClientJobDetails() {
     try {
       await api.post("/Social/connect", {
         requesterId: user?.userId,
-        targetId: freelancerId,
+        targetId: freelancerId, 
       });
       Alert.alert("Success", "Connection request sent!");
     } catch (e: any) {
@@ -170,7 +172,6 @@ export default function ClientJobDetails() {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
 
-      {/* Header with increased Top Padding */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -188,7 +189,6 @@ export default function ClientJobDetails() {
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Job Summary Card */}
         <View style={styles.summarySection}>
           <Text style={styles.jobTitle}>{job.title}</Text>
           <View style={styles.tagsRow}>
@@ -277,32 +277,41 @@ export default function ClientJobDetails() {
 
                 return (
                   <View key={item.bidId} style={styles.freelancerCard}>
-                    {/* Card Header */}
                     <View style={styles.cardHeader}>
-                      <View style={styles.avatarContainer}>
-                        {item.freelancer?.profileImageUrl ? (
-                          <Image
-                            source={{ uri: item.freelancer.profileImageUrl }}
-                            style={styles.avatarImage}
-                          />
-                        ) : (
-                          <Text style={styles.avatarText}>
-                            {item.freelancer?.fullName?.[0] || "U"}
+                      <TouchableOpacity
+                        style={styles.clickableHeader}
+                        onPress={() => {
+                          if (item.freelancer?.userId) {
+                            setSelectedFreelancerId(item.freelancer.userId);
+                            setMiniProfileVisible(true);
+                          }
+                        }}
+                      >
+                        <View style={styles.avatarContainer}>
+                          {item.freelancer?.profileImageUrl ? (
+                            <Image
+                              source={{ uri: item.freelancer.profileImageUrl }}
+                              style={styles.avatarImage}
+                            />
+                          ) : (
+                            <Text style={styles.avatarText}>
+                              {item.freelancer?.fullName?.[0] || "U"}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={styles.headerInfo}>
+                          <Text style={styles.freelancerName}>
+                            {item.freelancer?.fullName || "Unknown"}
                           </Text>
-                        )}
-                      </View>
-                      <View style={styles.headerInfo}>
-                        <Text style={styles.freelancerName}>
-                          {item.freelancer?.fullName || "Unknown"}
-                        </Text>
-                        <Text style={styles.freelancerRole}>Freelancer</Text>
-                      </View>
+                          <Text style={styles.freelancerRole}>Freelancer</Text>
+                        </View>
+                      </TouchableOpacity>
+                      
                       <View style={styles.priceTag}>
                         <Text style={styles.priceText}>${item.bidAmount}</Text>
                       </View>
                     </View>
 
-                    {/* Delivery & Proposal */}
                     <View style={styles.cardBody}>
                       <View style={styles.metaRow}>
                         <Ionicons
@@ -315,13 +324,13 @@ export default function ClientJobDetails() {
                         </Text>
                       </View>
                       <View style={styles.proposalBox}>
-                        <Text style={styles.proposalText} numberOfLines={4}>
+                        {/* ✅ FIXED: Removed numberOfLines to show full text */}
+                        <Text style={styles.proposalText}>
                           "{item.proposalText}"
                         </Text>
                       </View>
                     </View>
 
-                    {/* Actions */}
                     <View style={styles.cardActions}>
                       <TouchableOpacity
                         style={styles.chatButton}
@@ -334,7 +343,6 @@ export default function ClientJobDetails() {
                         />
                       </TouchableOpacity>
 
-                      {/* ✅ Logic: If friend -> Show "Connected". Else -> Show "Connect" button */}
                       {isFriend ? (
                         <View style={styles.connectedBadge}>
                           <Ionicons name="people" size={18} color="#059669" />
@@ -391,6 +399,12 @@ export default function ClientJobDetails() {
           </View>
         )}
       </ScrollView>
+
+      <MiniProfileSheet
+        visible={miniProfileVisible}
+        userId={selectedFreelancerId}
+        onClose={() => setMiniProfileVisible(false)}
+      />
     </View>
   );
 }
@@ -400,13 +414,12 @@ const styles = StyleSheet.create({
   loaderContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   errorText: { color: "#EF4444", fontSize: 16 },
 
-  // ✅ Updated Header Style (Added paddingTop for status bar)
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? 40 : 50, // More space at the top
+    paddingTop: Platform.OS === "android" ? 40 : 50,
     paddingBottom: 16,
     backgroundColor: "#FFF",
     borderBottomWidth: 1,
@@ -498,7 +511,6 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", marginTop: 40 },
   emptyText: { color: "#94A3B8", marginTop: 12, fontSize: 15 },
 
-  // FREELANCER CARD STYLES
   freelancerCard: {
     backgroundColor: "#FFF",
     borderRadius: 16,
@@ -512,6 +524,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  clickableHeader: { flexDirection: "row", alignItems: "center", flex: 1 }, 
   avatarContainer: {
     width: 48,
     height: 48,
@@ -583,8 +596,6 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     fontSize: 13,
   },
-
-  // ✅ New "Connected" Badge Style
   connectedBadge: {
     flexDirection: "row",
     alignItems: "center",
