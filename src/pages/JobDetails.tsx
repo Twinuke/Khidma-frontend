@@ -317,7 +317,7 @@ export default function JobDetails() {
                     </TouchableOpacity>
                     <TouchableOpacity 
                         style={styles.primaryBtn} 
-                        onPress={() => navigation.navigate("MyJobs")}
+                        onPress={() => navigation.navigate("Workspace", { jobId: job.jobId, jobData: job })}
                     >
                         <Text style={styles.primaryBtnText}>Open Workspace</Text>
                         <Ionicons name="arrow-forward" size={18} color="#FFF" style={{marginLeft: 8}}/>

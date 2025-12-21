@@ -304,15 +304,27 @@ export default function Home() {
             <Text style={styles.gridLabel}>Chat</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.gridItem}
-            onPress={() => navigation.navigate("Bids" as any)}
-          >
-            <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
-              <Ionicons name="document-text" size={22} color="#9333EA" />
-            </View>
-            <Text style={styles.gridLabel}>Bids</Text>
-          </TouchableOpacity>
+          {user?.userType === 1 ? (
+            <TouchableOpacity
+              style={styles.gridItem}
+              onPress={() => navigation.navigate("ClientWorkUpdates" as any)}
+            >
+              <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
+                <Ionicons name="clipboard-outline" size={22} color="#9333EA" />
+              </View>
+              <Text style={styles.gridLabel}>Work Updates</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.gridItem}
+              onPress={() => navigation.navigate("Bids" as any)}
+            >
+              <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
+                <Ionicons name="document-text" size={22} color="#9333EA" />
+              </View>
+              <Text style={styles.gridLabel}>Bids</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Activity Feed */}
@@ -532,7 +544,7 @@ const styles = StyleSheet.create({
   actDate: { color: "#94A3B8", fontSize: 12 },
   floatingFab: {
     position: "absolute",
-    bottom: 100,
+    bottom: 30,
     right: 20,
     shadowColor: COLORS.primary,
     shadowOpacity: 0.4,

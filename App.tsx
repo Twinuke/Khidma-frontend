@@ -37,6 +37,8 @@ import ClientJobDetails from "./src/pages/ClientJobDetails";
 import ClientMyJobs from "./src/pages/ClientMyJobs";
 import Connections from "./src/pages/Connections";
 import SocialPage from "./src/pages/SocialPage";
+import Workspace from "./src/pages/Workspace";
+import ClientWorkUpdates from "./src/pages/ClientWorkUpdates";
 
 export type RootStackParamList = {
   PhoneNumberEntry: undefined;
@@ -64,6 +66,8 @@ export type RootStackParamList = {
   ClientMyJobs: undefined;
   ClientJobDetails: { jobId: number };
   Connections: undefined;
+  Workspace: { jobId: number; jobData?: any };
+  ClientWorkUpdates: undefined;
   OnboardingScreen: undefined; 
 };
 
@@ -119,6 +123,8 @@ const AppNavigator = () => (
     <AppStack.Screen name="Search" component={Search} />
     <AppStack.Screen name="ClientMyJobs" component={ClientMyJobs} />
     <AppStack.Screen name="ClientJobDetails" component={ClientJobDetails} />
+    <AppStack.Screen name="Workspace" component={Workspace} />
+    <AppStack.Screen name="ClientWorkUpdates" component={ClientWorkUpdates} />
   </AppStack.Navigator>
 );
 
