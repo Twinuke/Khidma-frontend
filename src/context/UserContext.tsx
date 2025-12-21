@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import api from "../config/api";
 
+// ✅ FIX: Added missing professional fields to match Backend
 export interface User {
   userId: number;
   fullName: string;
@@ -20,6 +21,15 @@ export interface User {
   balance?: number;
   latitude?: number;
   longitude?: number;
+  
+  // New Professional Fields
+  jobTitle?: string;
+  hourlyRate?: number;
+  isAvailable?: boolean;
+  languages?: string;
+  socialLinks?: string;
+  cvUrl?: string;
+  linkedinUrl?: string;
 }
 
 interface UserContextType {
@@ -42,7 +52,6 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-// ✅ Improved Cache Busting: Handles nulls safely
 const processUserImage = (userData: User) => {
   if (
     userData &&

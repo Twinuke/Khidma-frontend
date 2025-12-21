@@ -1,161 +1,196 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
-import { Job } from "../src/types/job";
+import { MiniProfileSheet } from "../src/components/MiniProfileSheet";
 
-const formatTime = (dateString: string) => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+export const JobCard = ({ job, onPress }: any) => {
+  const [sheetVisible, setSheetVisible] = useState(false);
 
-  if (diff < 60) return "Just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-};
-
-interface JobCardProps {
-  job: Job;
-  onPress: (job: Job) => void;
-}
-
-export const JobCard: React.FC<JobCardProps> = ({ job, onPress }) => {
-  // Determine Category Icon & Color
-  const getCategoryTheme = () => {
-    const cat = (job.category || "").toLowerCase();
-    if (cat.includes("dev")) return { icon: "code-slash", color: "#3B82F6", bg: "#EFF6FF" };
-    if (cat.includes("design")) return { icon: "brush", color: "#EC4899", bg: "#FDF2F8" };
-    if (cat.includes("market")) return { icon: "trending-up", color: "#8B5CF6", bg: "#F5F3FF" };
-    return { icon: "briefcase", color: "#64748B", bg: "#F1F5F9" };
+  const getTimeAgo = (date: string) => {
+    if (!date) return "Just now";
+    const now = new Date();
+    const posted = new Date(date);
+    const diff = Math.floor((now.getTime() - posted.getTime()) / 1000 / 60 / 60);
+    if (diff < 1) return "Just now";
+    if (diff < 24) return `${diff}h ago`;
+    return `${Math.floor(diff / 24)}d ago`;
   };
 
-  const theme = getCategoryTheme();
-
   return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      style={styles.container}
-      onPress={() => onPress(job)}
-    >
-      <View style={styles.contentContainer}>
-        {/* Header: Icon + Title + Time */}
+    <>
+      <TouchableOpacity 
+        style={styles.card} 
+        // ✅ FIX: Explicitly ignore the 'event' and pass 'job' (or nothing)
+        // This prevents the "Synthetic Event" crash.
+        onPress={() => onPress && onPress(job)}
+        activeOpacity={0.9}
+      >
         <View style={styles.header}>
-          <View style={[styles.iconBox, { backgroundColor: theme.bg }]}>
-            <Ionicons name={theme.icon as any} size={20} color={theme.color} />
-          </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title} numberOfLines={1}>{job.title}</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.clientName}>
-                {job.client?.fullName || "Verified Client"}
-              </Text>
-              <View style={styles.dot} />
-              <Text style={styles.timeText}>{formatTime(job.createdAt)}</Text>
+          <TouchableOpacity 
+            style={styles.clientInfo} 
+            onPress={() => setSheetVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Image 
+                source={{ 
+                    uri: job.clientAvatar || `https://ui-avatars.com/api/?name=${job.clientName || 'Client'}` 
+                }} 
+                style={styles.avatar} 
+            />
+            <View>
+              <Text style={styles.clientName} numberOfLines={1}>{job.clientName || "Unknown Client"}</Text>
+              <Text style={styles.time}>{getTimeAgo(job.createdAt)}</Text>
             </View>
-          </View>
-          
-          {/* Price Tag */}
-          <View style={styles.priceTag}>
-            <Text style={styles.priceText}>${Number(job.budget).toLocaleString()}</Text>
+          </TouchableOpacity>
+
+          <View style={styles.priceBadge}>
+            <Text style={styles.priceText}>${job.budget}</Text>
           </View>
         </View>
 
-        {/* Description Snippet */}
-        <Text style={styles.description} numberOfLines={2}>
-          {job.description}
-        </Text>
-
-        {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Footer: Badges + Action */}
+        <View style={styles.content}>
+          <Text style={styles.title} numberOfLines={2}>{job.title}</Text>
+          <Text style={styles.description} numberOfLines={3}>{job.description}</Text>
+        </View>
+
         <View style={styles.footer}>
-          <View style={styles.badges}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{job.experienceLevel}</Text>
+          <View style={styles.tagsContainer}>
+            <View style={styles.tag}>
+                <Ionicons name="briefcase-outline" size={12} color="#64748B" />
+                <Text style={styles.tagText}>{job.category || "General"}</Text>
             </View>
-            {job.isRemote && (
-              <View style={[styles.badge, styles.remoteBadge]}>
-                <Ionicons name="globe-outline" size={10} color="#059669" style={{marginRight: 4}} />
-                <Text style={styles.remoteText}>Remote</Text>
-              </View>
-            )}
+            <View style={styles.tag}>
+                <Ionicons name="location-outline" size={12} color="#64748B" />
+                <Text style={styles.tagText}>{job.location || "Remote"}</Text>
+            </View>
           </View>
           
-          <View style={styles.actionRow}>
-            <Text style={styles.actionText}>Details</Text>
-            <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+          <View style={styles.bidsInfo}>
+             <Ionicons name="people-outline" size={14} color="#94A3B8" />
+             <Text style={styles.bidsText}>{job.bidsCount || 0} bids</Text>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+
+      <MiniProfileSheet
+        visible={sheetVisible}
+        userId={job.clientId} 
+        onClose={() => setSheetVisible(false)}
+      />
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
+  card: {
+    backgroundColor: "white",
+    borderRadius: 20,
     marginBottom: 16,
-    // Modern Soft Shadow
+    padding: 16,
     shadowColor: "#64748B",
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: "rgba(241, 245, 249, 1)", // Subtle border
+    borderColor: "#F1F5F9",
   },
-  contentContainer: { padding: 20 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
-  iconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    marginRight: 14,
+    marginBottom: 12,
   },
-  headerText: { flex: 1 },
-  title: { fontSize: 17, fontWeight: "700", color: "#0F172A", marginBottom: 4, letterSpacing: -0.3 },
-  metaRow: { flexDirection: "row", alignItems: "center" },
-  clientName: { fontSize: 13, color: "#64748B", fontWeight: "500" },
-  dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: "#CBD5E1", marginHorizontal: 6 },
-  timeText: { fontSize: 12, color: "#94A3B8" },
-  
-  priceTag: {
-    backgroundColor: "#F0FDF4", // Light Green
+  clientInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F1F5F9",
+    marginRight: 10,
+  },
+  clientName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  time: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  priceBadge: {
+    backgroundColor: "#F0FDF4",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#DCFCE7",
   },
-  priceText: { color: "#166534", fontWeight: "700", fontSize: 14 },
-
-  description: {
-    fontSize: 15,
-    color: "#475569",
-    lineHeight: 24,
+  priceText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#16A34A",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#F1F5F9",
+    marginBottom: 12,
+  },
+  content: {
     marginBottom: 16,
   },
-
-  divider: { height: 1, backgroundColor: "#F1F5F9", marginBottom: 16 },
-
-  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  badges: { flexDirection: "row", gap: 8 },
-  badge: {
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 6,
+    lineHeight: 24,
+  },
+  description: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  tagsContainer: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  tag: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: "#F8FAFC",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
-  badgeText: { fontSize: 12, color: "#475569", fontWeight: "600" },
-  remoteBadge: { backgroundColor: "#ECFDF5", borderColor: "#D1FAE5", flexDirection: "row", alignItems: "center" },
-  remoteText: { fontSize: 12, color: "#059669", fontWeight: "600" },
-
-  actionRow: { flexDirection: "row", alignItems: "center", gap: 2 },
-  actionText: { fontSize: 13, color: "#64748B", fontWeight: "600" },
+  tagText: {
+    fontSize: 12,
+    color: "#64748B",
+    marginLeft: 4,
+    fontWeight: "500",
+  },
+  bidsInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4
+  },
+  bidsText: {
+      fontSize: 12,
+      color: "#94A3B8",
+      fontWeight: '500'
+  }
 });

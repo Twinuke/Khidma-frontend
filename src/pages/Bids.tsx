@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ScreenWrapper } from "../../components/ScreenWrapper";
+import { ScreenWrapper } from "../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 

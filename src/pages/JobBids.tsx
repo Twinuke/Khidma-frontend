@@ -1,168 +1,121 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  Alert
 } from "react-native";
-import { RootStackParamList } from "../../App";
 import api from "../config/api";
-import { useUser } from "../context/UserContext";
-
-type JobBidsNav = NativeStackNavigationProp<RootStackParamList, "JobBids">;
-
-interface BidItem {
-  bidId: number;
-  jobId: number;
-  freelancerId: number;
-  bidAmount: number;
-  deliveryTimeDays: number;
-  proposalText: string;
-  createdAt: string;
-  status: number;
-  freelancer?: {
-    userId: number;
-    fullName: string;
-  };
-}
-
-const statusMeta = (status: number) => {
-  switch (status) {
-    case 0:
-      return { label: "Pending", color: "#D97706", bg: "#FEF3C7" };
-    case 1:
-      return { label: "Accepted", color: "#16A34A", bg: "#DCFCE7" };
-    case 2:
-      return { label: "Rejected", color: "#DC2626", bg: "#FEE2E2" };
-    default:
-      return { label: "Unknown", color: "#4B5563", bg: "#E5E7EB" };
-  }
-};
+import { ScreenWrapper } from "../components/ScreenWrapper";
+import { MiniProfileSheet } from "../components/MiniProfileSheet"; // ✅ Make sure this exists
 
 export default function JobBids() {
   const route = useRoute<any>();
-  const navigation = useNavigation<JobBidsNav>();
-  const { user } = useUser();
+  const navigation = useNavigation<any>();
+  const { jobId, jobTitle } = route.params;
 
-  const { jobId, jobTitle } = route.params || {};
-
-  const [bids, setBids] = useState<BidItem[]>([]);
+  const [bids, setBids] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadBids = useCallback(async () => {
-    if (!jobId) return;
+  // ✅ Mini Profile State
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [miniProfileVisible, setMiniProfileVisible] = useState(false);
+
+  const fetchBids = async () => {
     try {
       const response = await api.get(`/Bids/job/${jobId}`);
       setBids(response.data);
     } catch (error) {
-      console.log("Load job bids error", error);
+      console.log("Error fetching bids", error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [jobId]);
+  };
 
   useEffect(() => {
-    loadBids();
-  }, [loadBids]);
+    fetchBids();
+  }, [jobId]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadBids();
+  // ✅ Handler to open profile
+  const handleOpenProfile = (userId: number) => {
+    setSelectedUserId(userId);
+    setMiniProfileVisible(true);
   };
 
-  const handleAccept = async (bid: BidItem) => {
-    if (!user || user.userType !== 1) {
-      Alert.alert("Error", "Only clients can accept bids.");
-      return;
-    }
-    Alert.alert("Accept bid", `Accept bid of $${bid.bidAmount.toFixed(2)}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Accept",
-        onPress: async () => {
-          try {
-            await api.put(`/Bids/${bid.bidId}/accept`);
-            Alert.alert("Success", "Bid accepted.", [
-              {
-                text: "OK",
-                // ✅ ADDED: Redirect to JobDetails after accepting
-                onPress: () => {
-                  navigation.navigate("JobDetails", {
-                    jobId: bid.jobId,
-                    jobTitle: jobTitle, // pass if available
-                  } as any);
-                },
-              },
-            ]);
-          } catch (error) {
-            Alert.alert("Error", "Failed to accept bid.");
-          }
-        },
-      },
-    ]);
+  const handleChat = (freelancerId: number, freelancerName: string) => {
+      // Navigate to chat (assuming you have this logic)
+      navigation.navigate('ChatScreen', { 
+          chatId: null, // New chat
+          receiverId: freelancerId, 
+          receiverName: freelancerName 
+      });
   };
 
-  const renderItem = ({ item }: { item: BidItem }) => {
-    const meta = statusMeta(item.status);
-    const isPending = item.status === 0;
-
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.freelancerName}>
-            {item.freelancer?.fullName || "Freelancer"}
-          </Text>
-          <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
-            <Text style={[styles.statusText, { color: meta.color }]}>
-              {meta.label}
+  const renderBid = ({ item }: { item: any }) => (
+    <View style={styles.bidCard}>
+      <View style={styles.bidHeader}>
+        {/* ✅ Clickable User Info */}
+        <TouchableOpacity 
+            style={styles.userInfo} 
+            onPress={() => handleOpenProfile(item.freelancerId)}
+        >
+          <Image
+            source={{
+              uri: item.freelancerAvatar || `https://ui-avatars.com/api/?name=${item.freelancerName}&background=random`,
+            }}
+            style={styles.avatar}
+          />
+          <View>
+            <Text style={styles.userName}>{item.freelancerName}</Text>
+            <Text style={styles.timeAgo}>
+                {new Date(item.bidDate).toLocaleDateString()}
             </Text>
           </View>
+        </TouchableOpacity>
+
+        <View style={styles.amountBadge}>
+          <Text style={styles.amountText}>${item.amount}</Text>
         </View>
-
-        <Text style={styles.amount}>${item.bidAmount.toFixed(2)}</Text>
-        <Text style={styles.meta}>Delivery: {item.deliveryTimeDays} days</Text>
-        <Text style={styles.meta}>
-          Placed: {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
-
-        <Text style={styles.proposalLabel}>Proposal</Text>
-        <Text style={styles.proposalText}>{item.proposalText}</Text>
-
-        {isPending && (
-          <TouchableOpacity
-            style={styles.acceptBtn}
-            onPress={() => handleAccept(item)}
-          >
-            <Text style={styles.acceptText}>Accept bid</Text>
-          </TouchableOpacity>
-        )}
       </View>
-    );
-  };
+
+      <Text style={styles.proposalText}>{item.proposal}</Text>
+
+      <View style={styles.footer}>
+        <TouchableOpacity 
+            style={styles.chatBtn} 
+            onPress={() => handleChat(item.freelancerId, item.freelancerName)}
+        >
+          <Ionicons name="chatbubble-outline" size={18} color="#64748B" />
+          <Text style={styles.chatText}>Chat</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={styles.acceptBtn} onPress={() => Alert.alert("Accept", "Accept logic here")}>
+          <Text style={styles.acceptText}>Accept Bid</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
-    <View style={styles.container}>
-      {/* ✅ Standardized Header */}
+    <ScreenWrapper style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="arrow-back" size={24} color="#0F172A" />
-          </TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+        </TouchableOpacity>
+        <View style={{flex: 1}}>
+            <Text style={styles.title}>Bids for Job</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>{jobTitle}</Text>
         </View>
-        <Text style={styles.headerTitle}>Job Bids</Text>
-        <View style={styles.headerRight} />
       </View>
 
       {loading ? (
@@ -172,85 +125,147 @@ export default function JobBids() {
       ) : (
         <FlatList
           data={bids}
+          renderItem={renderBid}
           keyExtractor={(item) => item.bidId.toString()}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.listContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchBids(); }} />
           }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>No bids received yet.</Text>
+            <View style={styles.emptyContainer}>
+              <Ionicons name="documents-outline" size={64} color="#CBD5E1" />
+              <Text style={styles.emptyText}>No bids yet.</Text>
             </View>
           }
         />
       )}
-    </View>
+
+      {/* ✅ Mini Profile Sheet Component */}
+      <MiniProfileSheet
+        visible={miniProfileVisible}
+        userId={selectedUserId}
+        onClose={() => setMiniProfileVisible(false)}
+      />
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-
-  // ✅ Standard Header
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 40,
-    paddingBottom: 10,
-    backgroundColor: "#FFF",
+    paddingVertical: 16,
+    backgroundColor: "white",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
   },
-  headerLeft: { flex: 1, alignItems: "flex-start" },
-  headerTitle: {
-    flex: 2,
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0F172A",
-    textAlign: "center",
-  },
-  headerRight: { flex: 1, alignItems: "flex-end" },
-  iconBtn: { padding: 4 },
-
-  list: { padding: 16 },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+  backBtn: { marginRight: 16 },
+  title: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
+  subtitle: { fontSize: 14, color: "#64748B" },
+  listContent: { padding: 20 },
+  
+  // Bid Card Styles
+  bidCard: {
+    backgroundColor: "white",
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: "#F1F5F9",
   },
-  cardHeader: {
+  bidHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  userInfo: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    flex: 1,
   },
-  freelancerName: { fontSize: 16, fontWeight: "700", color: "#111827" },
-  statusBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  statusText: { fontSize: 11, fontWeight: "700" },
-  amount: { fontSize: 18, fontWeight: "700", color: "#2563EB" },
-  meta: { fontSize: 13, color: "#6B7280", marginTop: 2 },
-  proposalLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#4B5563",
-    marginTop: 10,
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#E2E8F0",
+    marginRight: 12,
   },
-  proposalText: { fontSize: 13, color: "#374151", marginTop: 4 },
-  acceptBtn: {
-    marginTop: 14,
-    backgroundColor: "#16A34A",
+  userName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  timeAgo: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginTop: 2,
+  },
+  amountBadge: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  amountText: {
+    color: "#2563EB",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  proposalText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    paddingTop: 12,
+  },
+  chatBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
   },
-  acceptText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  empty: { alignItems: "center", marginTop: 60 },
-  emptyText: { color: "#6B7280", fontSize: 15 },
+  chatText: {
+    marginLeft: 6,
+    color: "#64748B",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  acceptBtn: {
+    backgroundColor: "#0F172A",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  acceptText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    marginTop: 60,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#94A3B8",
+  },
 });

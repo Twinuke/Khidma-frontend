@@ -1,133 +1,211 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Image, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import api from '../config/api';
-import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from "react-native";
+import api from "../config/api";
+
+const { height } = Dimensions.get("window");
 
 interface MiniProfileSheetProps {
   visible: boolean;
+  userId: number | null;
   onClose: () => void;
-  user: any; // The target user to show
-  currentUserId: number;
 }
 
-const { height } = Dimensions.get('window');
-
-export const MiniProfileSheet: React.FC<MiniProfileSheetProps> = ({ visible, onClose, user, currentUserId }) => {
+export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetProps) => {
   const navigation = useNavigation<any>();
+  const slideAnim = React.useRef(new Animated.Value(height)).current;
+  
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [aiProfile, setAiProfile] = useState<any>(null);
 
-  const handleConnect = async () => {
+  useEffect(() => {
+    if (visible && userId) {
+      // Reset state
+      setUser(null);
+      setAiProfile(null);
+      setLoading(true);
+      
+      // Animate In
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 15,
+      }).start();
+
+      // Fetch Data
+      fetchData(userId);
+    } else {
+      // Animate Out
+      Animated.timing(slideAnim, {
+        toValue: height,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, userId]);
+
+  const fetchData = async (id: number) => {
     try {
-      await api.post('/Social/connect', {
-        requesterId: currentUserId,
-        targetId: user.userId
-      });
-      alert('Connection request sent!');
-      onClose();
+      const [userRes, aiRes] = await Promise.all([
+        api.get(`/Users/profile/${id}`).catch(() => null),
+        api.get(`/Onboarding/${id}`).catch(() => null),
+      ]);
+
+      if (userRes?.data?.user) {
+        setUser(userRes.data.user);
+      }
+      if (aiRes?.data) {
+        setAiProfile(aiRes.data);
+      }
     } catch (e) {
-      alert('Could not connect or already connected.');
+      console.log("Mini Profile Error", e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleChat = async () => {
-    // Reuse existing chat logic
-    try {
-      const res = await api.post('/Chat/open', {
-        user1Id: currentUserId,
-        user2Id: user.userId
-      });
-      onClose();
-      navigation.navigate('ChatScreen', { conversationId: res.data.conversationId, otherUser: user });
-    } catch (e) {
-      console.log(e);
-    }
+  const handleViewFullProfile = () => {
+    onClose();
+    // Navigate to full profile, passing userId
+    navigation.push('Profile', { userId });
   };
 
-  if (!user) return null;
+  const Tag = ({ text, color }: { text: string; color: string }) => (
+    <View style={[styles.tag, { backgroundColor: color + "15", borderColor: color + "30" }]}>
+      <Text style={[styles.tagText, { color }]}>{text}</Text>
+    </View>
+  );
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.overlay} />
-      </TouchableWithoutFeedback>
-      
-      <View style={styles.sheet}>
-        <View style={styles.dragHandle} />
-        
-        <View style={styles.header}>
-          {user.profileImageUrl ? (
-            <Image source={{ uri: user.profileImageUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarText}>{user.fullName?.[0]}</Text>
+    <Modal visible={visible} transparent onRequestClose={onClose} animationType="none">
+      <View style={styles.backdropContainer}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+
+        <Animated.View
+          style={[
+            styles.sheet,
+            { transform: [{ translateY: slideAnim }] },
+          ]}
+        >
+          <View style={styles.handle} />
+
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2563EB" />
             </View>
-          )}
-          <View style={styles.info}>
-            <Text style={styles.name}>{user.fullName}</Text>
-            <Text style={styles.role}>{user.userType === 1 ? 'Client' : 'Freelancer'} • {user.city || 'No Location'}</Text>
-          </View>
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statVal}>4.9</Text>
-            <Text style={styles.statLabel}>Rating</Text>
-          </View>
-          <View style={styles.verticalLine} />
-          <View style={styles.stat}>
-            <Text style={styles.statVal}>12</Text>
-            <Text style={styles.statLabel}>Jobs</Text>
-          </View>
-        </View>
-
-        <View style={styles.actions}>
-          {user.userId !== currentUserId && (
+          ) : user ? (
             <>
-              <TouchableOpacity style={[styles.btn, styles.connectBtn]} onPress={handleConnect}>
-                <Ionicons name="person-add" size={20} color="#FFF" />
-                <Text style={styles.btnText}>Connect</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.chatBtn]} onPress={handleChat}>
-                <Ionicons name="chatbubble" size={20} color="#2563EB" />
-                <Text style={[styles.btnText, { color: '#2563EB' }]}>Chat</Text>
+              {/* Header: Avatar + Name + Rating */}
+              <View style={styles.header}>
+                <Image
+                  source={{
+                    uri: user.profileImageUrl || "https://via.placeholder.com/150",
+                  }}
+                  style={styles.avatar}
+                />
+                <View style={styles.headerInfo}>
+                  <Text style={styles.name}>{user.fullName}</Text>
+                  <Text style={styles.jobTitle}>{user.jobTitle || "Freelancer"}</Text>
+                  <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={14} color="#F59E0B" />
+                    <Text style={styles.ratingText}> 4.9 • {user.city || "Remote"}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.divider} />
+
+              {/* Skills / Tags */}
+              {aiProfile && (
+                <View style={styles.tagsSection}>
+                  <Text style={styles.sectionLabel}>Top Skills</Text>
+                  <View style={styles.tagsWrapper}>
+                    {aiProfile.selectedDomains?.split(",").slice(0, 3).map((t: string, i: number) => (
+                      <Tag key={i} text={t} color="#0F172A" />
+                    ))}
+                    {aiProfile.selectedSkills?.split(",").slice(0, 3).map((t: string, i: number) => (
+                      <Tag key={i + 10} text={t} color="#2563EB" />
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Action Button */}
+              <TouchableOpacity style={styles.fullProfileBtn} onPress={handleViewFullProfile}>
+                <Text style={styles.fullProfileText}>View Full Profile</Text>
+                <Ionicons name="arrow-forward" size={18} color="white" />
               </TouchableOpacity>
             </>
+          ) : (
+            <View style={styles.loadingContainer}>
+                <Text style={{color: '#64748B'}}>User not found</Text>
+            </View>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  sheet: { 
-    backgroundColor: '#FFF', 
-    borderTopLeftRadius: 24, 
-    borderTopRightRadius: 24, 
-    padding: 24, 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0,
-    elevation: 10 
+  backdropContainer: { flex: 1, justifyContent: "flex-end" },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
+  sheet: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    minHeight: 300,
   },
-  dragHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  avatar: { width: 64, height: 64, borderRadius: 32 },
-  avatarPlaceholder: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 24, fontWeight: 'bold', color: '#2563EB' },
-  info: { marginLeft: 16 },
-  name: { fontSize: 20, fontWeight: 'bold', color: '#0F172A' },
-  role: { fontSize: 14, color: '#64748B', marginTop: 4 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#F1F5F9', marginBottom: 20 },
-  stat: { alignItems: 'center' },
-  statVal: { fontSize: 18, fontWeight: 'bold', color: '#0F172A' },
-  statLabel: { fontSize: 12, color: '#64748B' },
-  verticalLine: { width: 1, backgroundColor: '#F1F5F9' },
-  actions: { flexDirection: 'row', gap: 12 },
-  btn: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 14, borderRadius: 12, gap: 8 },
-  connectBtn: { backgroundColor: '#2563EB' },
-  chatBtn: { backgroundColor: '#F1F5F9' },
-  btnText: { fontWeight: '600', color: '#FFF' },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  loadingContainer: { height: 200, justifyContent: 'center', alignItems: 'center' },
+  
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F1F5F9' },
+  headerInfo: { marginLeft: 16, flex: 1 },
+  name: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
+  jobTitle: { fontSize: 14, color: '#64748B', marginVertical: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center' },
+  ratingText: { fontSize: 13, color: '#475569', fontWeight: '600' },
+
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 16 },
+
+  tagsSection: { marginBottom: 24 },
+  sectionLabel: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 10 },
+  tagsWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  tagText: { fontSize: 12, fontWeight: '600' },
+
+  fullProfileBtn: {
+    backgroundColor: '#0F172A',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+  },
+  fullProfileText: { color: 'white', fontWeight: '700', fontSize: 16, marginRight: 8 }
 });

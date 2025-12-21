@@ -9,9 +9,11 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Image
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BidForm } from "../components/BidForm";
+import { MiniProfileSheet } from "../components/MiniProfileSheet"; // ✅ Import Added
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 import { Job } from "../types/job";
@@ -25,9 +27,12 @@ export default function JobDetails() {
   const { jobId, hasPlacedBid: paramHasBid } = route.params || {};
   const initialJobData = route.params?.jobData as Job;
 
-  const [job, setJob] = useState<Job | null>(initialJobData || null);
+  const [job, setJob] = useState<any>(initialJobData || null); // ✅ Use any to handle mixed DTO types safely
   const [loading, setLoading] = useState(!initialJobData);
   const [modalVisible, setModalVisible] = useState(false);
+  
+  // ✅ Mini Profile State
+  const [clientSheetVisible, setClientSheetVisible] = useState(false);
 
   const hasPlacedBid = paramHasBid || job?.hasPlacedBid || false;
 
@@ -68,12 +73,12 @@ export default function JobDetails() {
     try {
       const response = await api.post("/Chat/open", {
         user1Id: user.userId,
-        user2Id: job.client?.userId,
-        jobId: job.jobId, // ✅ Pass JobID to allow chat initiation
+        user2Id: job.client?.userId || job.clientId, // ✅ Handle both DTO formats
+        jobId: job.jobId, 
       });
       navigation.navigate("ChatScreen", {
         conversationId: response.data.conversationId,
-        otherUser: job.client,
+        otherUser: job.client || { userId: job.clientId, fullName: job.clientName }, // ✅ Fallback
       });
     } catch (e) {
       console.log("Chat Error:", e);
@@ -103,7 +108,12 @@ export default function JobDetails() {
     );
   }
 
-  const isOwner = user?.userId === job.client?.userId;
+  const isOwner = user?.userId === (job.client?.userId || job.clientId);
+  
+  // ✅ Resolve Name & Avatar safely from both Flat DTO and Nested Object
+  const clientName = job.clientName || job.client?.fullName || "Unknown Client";
+  const clientAvatar = job.clientAvatar || job.client?.profileImageUrl;
+  const clientId = job.clientId || job.client?.userId;
 
   return (
     <View style={styles.container}>
@@ -118,7 +128,7 @@ export default function JobDetails() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.mainInfo}>
           <Text style={styles.title}>{job.title}</Text>
           <Text style={styles.posted}>
@@ -167,21 +177,31 @@ export default function JobDetails() {
           </View>
         </View>
 
+        {/* ✅ CLIENT SECTION (Now Clickable) */}
         <View style={styles.clientSection}>
           <Text style={styles.sectionTitle}>About the Client</Text>
-          <View style={styles.clientRow}>
-            <View style={styles.avatarPlaceholder}>
-              <Text style={{ color: "#2563EB", fontWeight: "bold" }}>
-                {job.client?.fullName?.[0] || "C"}
-              </Text>
-            </View>
+          <TouchableOpacity 
+            style={styles.clientRow}
+            onPress={() => setClientSheetVisible(true)} // ✅ Opens Sheet
+            activeOpacity={0.7}
+          >
+            {clientAvatar ? (
+                <Image source={{ uri: clientAvatar }} style={styles.avatarImage} />
+            ) : (
+                <View style={styles.avatarPlaceholder}>
+                    <Text style={{ color: "#2563EB", fontWeight: "bold" }}>
+                        {clientName?.[0] || "C"}
+                    </Text>
+                </View>
+            )}
             <View>
-              <Text style={styles.clientName}>
-                {job.client?.fullName || "Client"}
-              </Text>
+              <Text style={styles.clientName}>{clientName}</Text>
               <Text style={styles.clientMeta}>Verified Client</Text>
             </View>
-          </View>
+            <View style={{flex: 1, alignItems: 'flex-end'}}>
+                 <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
+            </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -220,7 +240,6 @@ export default function JobDetails() {
                 style={[styles.bidBtn, styles.bidBtnDisabled, { flex: 2 }]}
                 disabled={true}
               >
-                {/* ✅ Changed text from "Bid Placed" to "Already applied" */}
                 <Text style={[styles.bidBtnText, styles.bidBtnTextDisabled]}>
                   Already applied
                 </Text>
@@ -254,6 +273,13 @@ export default function JobDetails() {
           )}
         </View>
       </Modal>
+
+      {/* ✅ Mini Profile Sheet */}
+      <MiniProfileSheet
+        visible={clientSheetVisible}
+        userId={clientId}
+        onClose={() => setClientSheetVisible(false)}
+      />
     </View>
   );
 }
@@ -337,6 +363,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#DBEAFE",
     justifyContent: "center",
     alignItems: "center",
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#E2E8F0"
   },
   clientName: { fontSize: 16, fontWeight: "600", color: "#0F172A" },
   clientMeta: { color: "#64748B", fontSize: 13 },
