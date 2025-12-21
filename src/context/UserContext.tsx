@@ -22,7 +22,10 @@ export interface User {
   latitude?: number;
   longitude?: number;
   
-  // New Professional Fields
+  // ✅ ADDED THIS: Fixes the TypeScript error in Profile.tsx
+  createdAt?: string; 
+
+  // Professional Fields
   jobTitle?: string;
   hourlyRate?: number;
   isAvailable?: boolean;

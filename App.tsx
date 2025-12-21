@@ -1,4 +1,4 @@
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"; // Import Tab Navigator
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"; 
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as SplashScreen from "expo-splash-screen";
@@ -6,7 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useCallback } from "react";
 import { View } from "react-native";
 
-import Footer from "./src/components/Footer"; // Import your custom Footer
+import Footer from "./src/components/Footer"; 
 import SplashScreenComponent from "./src/components/SplashScreen";
 import { ChatProvider } from "./src/context/ChatContext";
 import { UserProvider, useUser } from "./src/context/UserContext";
@@ -30,9 +30,9 @@ import Notifications from "./src/pages/Notifications";
 import Profile from "./src/pages/Profile";
 import Search from "./src/pages/Search";
 import Settings from "./src/pages/Settings";
-import OnboardingScreen from "./src/pages/OnboardingScreen"; // ✅ NEW: Import Onboarding
+import OnboardingScreen from "./src/pages/OnboardingScreen"; 
 
-// --- New Feature Screens (Social & Client Dashboard) ---
+// --- New Feature Screens ---
 import ClientJobDetails from "./src/pages/ClientJobDetails";
 import ClientMyJobs from "./src/pages/ClientMyJobs";
 import Connections from "./src/pages/Connections";
@@ -43,9 +43,13 @@ export type RootStackParamList = {
   EmailVerification: { email: string; purpose?: "register" | "login" };
   RegistrationForm: { phoneNumber: string; email?: string };
   Login: { phoneNumber?: string; email?: string } | undefined;
-  MainTabs: undefined; // Replaces 'Home' as the main entry
-  Home: undefined; // Kept for type safety if needed
+  MainTabs: undefined; 
+  Home: undefined; 
   Profile: undefined;
+  
+  // ✅ ADDED THIS: The route for viewing other profiles
+  UserProfile: { userId: number }; 
+
   Jobs: undefined;
   JobDetails: { jobId: number; jobData?: any; hasPlacedBid?: boolean };
   CreateJob: undefined;
@@ -60,7 +64,7 @@ export type RootStackParamList = {
   ClientMyJobs: undefined;
   ClientJobDetails: { jobId: number };
   Connections: undefined;
-  OnboardingScreen: undefined; // ✅ NEW: Add to types
+  OnboardingScreen: undefined; 
 };
 
 const AuthStack = createNativeStackNavigator<RootStackParamList>();
@@ -80,10 +84,10 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
-// 2. Define Tab Navigator (The "Instagram" style persistent footer)
+// 2. Define Tab Navigator (The persistent footer)
 const MainTabs = () => (
   <Tab.Navigator
-    tabBar={(props) => <Footer {...props} />} // Use your custom Footer
+    tabBar={(props) => <Footer {...props} />} 
     screenOptions={{ headerShown: false }}
     initialRouteName="Home"
   >
@@ -98,13 +102,12 @@ const MainTabs = () => (
 // 3. Define App Flow (Protected)
 const AppNavigator = () => (
   <AppStack.Navigator screenOptions={{ headerShown: false }}>
-    {/* Main Tabs is now the entry point instead of just Home */}
     <AppStack.Screen name="MainTabs" component={MainTabs} />
-
-    {/* ✅ NEW: Add Onboarding Screen */}
     <AppStack.Screen name="OnboardingScreen" component={OnboardingScreen} />
 
-    {/* Core Features that overlay the tabs */}
+    {/* ✅ ADDED THIS: Register the UserProfile screen */}
+    <AppStack.Screen name="UserProfile" component={Profile} />
+
     <AppStack.Screen name="Jobs" component={Jobs} />
     <AppStack.Screen name="JobDetails" component={JobDetails} />
     <AppStack.Screen name="CreateJob" component={CreateJob} />
@@ -119,7 +122,6 @@ const AppNavigator = () => (
   </AppStack.Navigator>
 );
 
-// 4. Main Navigation Logic
 const NavigationWrapper = () => {
   const { isLoading, isAuthenticated } = useUser();
 

@@ -3,15 +3,8 @@ import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/nativ
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-
-// ✅ FIX: Use Legacy FileSystem to support readAsStringAsync
-// @ts-ignore
-import * as FileSystem from "expo-file-system/legacy";
-
-import * as Sharing from "expo-sharing";
-import * as IntentLauncher from "expo-intent-launcher"; 
 import * as Linking from "expo-linking";
-import React, { useCallback, useState, useRef } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,33 +23,24 @@ import {
   TouchableWithoutFeedback,
   UIManager,
   View,
-  Switch
+  Switch,
+  KeyboardAvoidingView,
+  Keyboard
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+// @ts-ignore
+import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher"; 
+import * as Sharing from "expo-sharing";
+
 import api from "../config/api";
 import { User, useUser } from "../context/UserContext";
 
-// Enable animations
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const { height } = Dimensions.get("window");
-
-// --- Interfaces ---
-interface AiProfileData {
-  selectedDomains: string;
-  selectedSkills: string;
-  selectedTools: string;
-  workStyle: string;
-  confidenceLevel: string;
-}
-
-interface UserProfileStats {
-  completedJobs: number;
-  averageRating: number;
-  successRate: number;
-}
 
 const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
   Beirut: { lat: 33.8938, lng: 35.5018 },
@@ -70,19 +54,29 @@ const LEBANESE_CITIES: Record<string, { lat: number; lng: number }> = {
 };
 const CITY_KEYS = Object.keys(LEBANESE_CITIES);
 
+interface AiProfileData {
+  selectedDomains: string;
+  selectedSkills: string;
+  selectedTools: string;
+  confidenceLevel: string;
+}
+
+interface UserProfileStats {
+  completedJobs: number;
+  averageRating: number;
+  successRate: number;
+}
+
 export default function Profile() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { user: contextUser, updateUser, logout } = useUser();
   
-  // ✅ LOGIC: Determine Target User (Self vs Other)
   const paramUserId = route.params?.userId;
   const isOwnProfile = !paramUserId || (contextUser && Number(paramUserId) === contextUser.userId);
   const targetUserId = isOwnProfile ? contextUser?.userId : Number(paramUserId);
 
   const mapRef = useRef<MapView>(null);
-  
-  // Start Opacity at 1 to prevent "White Screen" if animation fails
   const fadeAnim = useRef(new Animated.Value(0)).current; 
   const sheetAnim = useRef(new Animated.Value(height)).current;
 
@@ -90,32 +84,53 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Connection State
+  const [connectionStatus, setConnectionStatus] = useState<"None" | "Pending" | "Accepted">("None");
+  const [connecting, setConnecting] = useState(false);
+
+  // Data State
+  const [displayUser, setDisplayUser] = useState<Partial<User> | null>(null);
+  const [aiProfile, setAiProfile] = useState<AiProfileData | null>(null);
+  const [stats, setStats] = useState<UserProfileStats>({ completedJobs: 0, averageRating: 0, successRate: 0 });
+  const [reviews, setReviews] = useState<any[]>([]);
+
+  // Rating Modal
+  const [rateModalVisible, setRateModalVisible] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState<Partial<User>>({});
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  
   // Direct Add State
   const [isAddingLinkedin, setIsAddingLinkedin] = useState(false);
   const [tempLinkedin, setTempLinkedin] = useState("");
   const [isUploadingCv, setIsUploadingCv] = useState(false);
   const [isViewingCv, setIsViewingCv] = useState(false);
 
-  // Data State
-  const [displayUser, setDisplayUser] = useState<Partial<User> | null>(null);
-  const [aiProfile, setAiProfile] = useState<AiProfileData | null>(null);
-  const [stats, setStats] = useState<UserProfileStats>({ completedJobs: 0, averageRating: 0, successRate: 0 });
-
-  // Form State (Only for editing self)
-  const [formData, setFormData] = useState<Partial<User>>({});
-
-  const [cityModalVisible, setCityModalVisible] = useState(false);
-  const [photoModalVisible, setPhotoModalVisible] = useState(false);
-
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [region, setRegion] = useState({ latitude: 33.8938, longitude: 35.5018, latitudeDelta: 0.05, longitudeDelta: 0.05 });
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Animation Effect for Photo Modal
+  useEffect(() => {
+    if (photoModalVisible) {
+      Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(sheetAnim, { toValue: height, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [photoModalVisible]);
 
   useFocusEffect(
     useCallback(() => {
       if (targetUserId) {
         fetchFullProfile(targetUserId);
         fetchAiProfile(targetUserId);
+        fetchReviews(targetUserId);
+        if (!isOwnProfile) checkConnectionStatus();
       }
     }, [targetUserId])
   );
@@ -129,19 +144,12 @@ export default function Profile() {
           averageRating: res.data.averageRating,
           successRate: res.data.successRate
         });
-        
         const userData = res.data.user;
-        // Clean Image URL
         if (userData.profileImageUrl && typeof userData.profileImageUrl === "string" && userData.profileImageUrl.includes("?t=")) {
             userData.profileImageUrl = userData.profileImageUrl.split("?t=")[0];
         }
-
         setDisplayUser(userData);
-
-        if (isOwnProfile) {
-            initializeForm(userData);
-        }
-
+        if (isOwnProfile) initializeForm(userData);
         if (userData.city) setSelectedCity(userData.city);
         if (userData.latitude && userData.longitude) {
             setPinCoords({ lat: userData.latitude, lng: userData.longitude });
@@ -151,9 +159,15 @@ export default function Profile() {
     } catch (e) {
       console.log("Error fetching profile stats", e);
     } finally {
-      // Ensure content fades in even if there's a minor error
       Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
     }
+  };
+
+  const fetchReviews = async (id: number) => {
+      try {
+          const res = await api.get(`/Reviews/user/${id}`);
+          setReviews(res.data);
+      } catch (e) { console.log("Fetch reviews error", e); }
   };
 
   const fetchAiProfile = async (id: number) => {
@@ -161,104 +175,102 @@ export default function Profile() {
       const res = await api.get(`/Onboarding/${id}`);
       if (res.data) setAiProfile(res.data);
     } catch (e: any) { 
-      // ✅ FIX: Silently ignore 404 (User hasn't set up AI profile yet)
       if (e.response && e.response.status === 404) return;
-      console.log("AI Profile fetch error", e); 
     }
   };
 
-  const initializeForm = (userData: User) => {
-    setFormData({
-      fullName: userData.fullName,
-      jobTitle: userData.jobTitle,
-      email: userData.email,
-      phoneNumber: userData.phoneNumber,
-      profileBio: userData.profileBio,
-      city: userData.city,
-      profileImageUrl: userData.profileImageUrl,
-      latitude: userData.latitude,
-      longitude: userData.longitude,
-      hourlyRate: userData.hourlyRate,
-      isAvailable: userData.isAvailable ?? true,
-      languages: userData.languages,
-      linkedinUrl: userData.linkedinUrl,
-      cvUrl: userData.cvUrl,
-    });
+  const checkConnectionStatus = async () => {
+      try {
+          const res = await api.get(`/Social/status/${contextUser?.userId}/${targetUserId}`);
+          setConnectionStatus(res.data.status || "None");
+      } catch (e) { console.log(e); }
   };
 
+  const handleConnect = async () => {
+      setConnecting(true);
+      try {
+          await api.post('/Social/connect', { requesterId: contextUser?.userId, targetId: targetUserId });
+          setConnectionStatus("Pending");
+          Alert.alert("Request Sent", "Connection request sent.");
+      } catch (e: any) { Alert.alert("Error", e.response?.data || "Could not send request."); } 
+      finally { setConnecting(false); }
+  };
+
+  const handleMessage = async () => {
+      try {
+          const response = await api.post("/Chat/open", { user1Id: contextUser?.userId, user2Id: targetUserId });
+          navigation.navigate("ChatScreen", { conversationId: response.data.conversationId, otherUser: displayUser });
+      } catch (e) { console.log("Chat Error:", e); }
+  };
+
+  const handleSubmitReview = async () => {
+      if (!newComment.trim()) { Alert.alert("Error", "Please write a comment."); return; }
+      setSubmittingReview(true);
+      try {
+          // ✅ FIX: Use revieweeId
+          await api.post('/Reviews', {
+              reviewerId: contextUser?.userId,
+              revieweeId: targetUserId, 
+              rating: newRating,
+              comment: newComment
+          });
+          Alert.alert("Success", "Review submitted!");
+          setRateModalVisible(false);
+          setNewComment("");
+          setNewRating(5);
+          
+          // ✅ FIX: Immediately refresh both lists
+          await Promise.all([
+              fetchReviews(targetUserId!),
+              fetchFullProfile(targetUserId!)
+          ]);
+      } catch (e) {
+          Alert.alert("Error", "Failed to submit review.");
+      } finally {
+          setSubmittingReview(false);
+      }
+  };
+
+  const initializeForm = (userData: User) => { setFormData({ ...userData }); };
   const getSafePayload = (overrides: Partial<User> = {}) => {
     const base = formData;
-    return { 
-        ...base, 
-        ...overrides, 
-        city: selectedCity, 
-        latitude: pinCoords?.lat, 
-        longitude: pinCoords?.lng 
-    };
+    return { ...base, ...overrides, city: selectedCity, latitude: pinCoords?.lat, longitude: pinCoords?.lng };
   };
-
   const handleSave = async () => {
     if (!isOwnProfile) return;
     if (!formData.fullName?.trim()) { Alert.alert("Error", "Name required"); return; }
-    
     setIsSaving(true);
     try {
       const payload = getSafePayload();
       await api.put(`/Users/${contextUser?.userId}`, payload);
       await updateUser(payload);
-      
       Alert.alert("Success", "Profile updated.");
       setIsEditing(false);
       fetchFullProfile(contextUser!.userId);
-    } catch (e: any) { 
-        Alert.alert("Error", e.response?.data?.title || "Could not save profile."); 
-    } finally { 
-        setIsSaving(false); 
-    }
+    } catch (e: any) { Alert.alert("Error", "Could not save profile."); } finally { setIsSaving(false); }
   };
-
-  const openLinkedinLink = () => {
-    if (!displayUser?.linkedinUrl) return;
-    let url = displayUser.linkedinUrl.trim();
-    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-    Linking.openURL(url).catch(err => Alert.alert("Error", "Could not open link"));
-  };
-
+  const openLinkedinLink = () => { if (displayUser?.linkedinUrl) Linking.openURL(displayUser.linkedinUrl); };
   const saveLinkedinDirectly = async () => {
       if (!isOwnProfile || !tempLinkedin.trim()) return;
       try {
           const payload = getSafePayload({ linkedinUrl: tempLinkedin });
           await api.put(`/Users/${contextUser?.userId}`, payload);
           await updateUser({ linkedinUrl: tempLinkedin });
-          
           setIsAddingLinkedin(false);
           setTempLinkedin("");
           fetchFullProfile(contextUser!.userId);
           Alert.alert("Success", "LinkedIn connected!");
-      } catch (e) {
-          Alert.alert("Error", "Failed to save LinkedIn URL");
-      }
+      } catch (e) { Alert.alert("Error", "Failed to save LinkedIn URL"); }
   };
-
   const handleCvUpload = async () => {
     if (!isOwnProfile) return;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
-      });
-
+      const result = await DocumentPicker.getDocumentAsync({ type: "application/pdf" });
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
-        
-        if (asset.size && asset.size > 10 * 1024 * 1024) {
-            Alert.alert("File Too Large", "Please upload a PDF smaller than 10MB.");
-            return;
-        }
-
+        if (asset.size && asset.size > 10 * 1024 * 1024) { Alert.alert("File Too Large", "Max 10MB"); return; }
         setIsUploadingCv(true);
         let fileUri = asset.uri;
-
-        // Android Content URI Handling
         // @ts-ignore
         if (fileUri.startsWith("content://") && FileSystem.cacheDirectory) {
             try {
@@ -267,85 +279,48 @@ export default function Profile() {
                 // @ts-ignore
                 await FileSystem.copyAsync({ from: fileUri, to: dest });
                 fileUri = dest;
-            } catch (err) {
-                console.log("Copy failed", err);
-            }
+            } catch (err) {}
         }
-
         // @ts-ignore
         const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: "base64" });
         const dataUri = `data:application/pdf;base64,${base64}`;
-
-        if (isEditing) {
-            setFormData(prev => ({ ...prev, cvUrl: dataUri }));
-            Alert.alert("Attached", "PDF attached. Don't forget to click 'Save Changes'.");
-        } else {
+        if (isEditing) { setFormData(prev => ({ ...prev, cvUrl: dataUri })); Alert.alert("Attached", "PDF attached."); } 
+        else {
             const payload = getSafePayload({ cvUrl: dataUri });
             await api.put(`/Users/${contextUser?.userId}`, payload);
             await updateUser({ cvUrl: dataUri });
             fetchFullProfile(contextUser!.userId);
-            Alert.alert("Success", "CV Uploaded and Saved!");
+            Alert.alert("Success", "CV Uploaded!");
         }
       }
-    } catch (err: any) {
-      console.log("Upload Error:", err);
-      Alert.alert("Upload Failed", "Could not upload PDF.");
-    } finally {
-        setIsUploadingCv(false);
-    }
+    } catch (err: any) { Alert.alert("Upload Failed", "Could not upload PDF."); } finally { setIsUploadingCv(false); }
   };
-
   const handleViewCv = async () => {
     if (!displayUser?.cvUrl) return;
     setIsViewingCv(true);
     try {
-        const base64Data = displayUser.cvUrl.includes(",") 
-            ? displayUser.cvUrl.split(",")[1] 
-            : displayUser.cvUrl;
-
+        const base64Data = displayUser.cvUrl.includes(",") ? displayUser.cvUrl.split(",")[1] : displayUser.cvUrl;
         // @ts-ignore
         const fileUri = FileSystem.cacheDirectory + 'User_Resume.pdf';
-        
         // @ts-ignore
         await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: "base64" });
-
         if (Platform.OS === 'android') {
             // @ts-ignore
             const contentUri = await FileSystem.getContentUriAsync(fileUri);
-            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                data: contentUri,
-                flags: 1, // Grant Read Permission
-                type: 'application/pdf',
-            });
+            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, flags: 1, type: 'application/pdf' });
         } else {
-            await Sharing.shareAsync(fileUri, {
-                mimeType: 'application/pdf',
-                UTI: 'com.adobe.pdf',
-                dialogTitle: 'Resume'
-            });
+            await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Resume' });
         }
-    } catch (error) {
-        console.log("View CV Error:", error);
-        Alert.alert("Error", "Could not open the PDF. Ensure you have a PDF viewer.");
-    } finally {
-        setIsViewingCv(false);
-    }
+    } catch (error) { Alert.alert("Error", "Could not open PDF."); } finally { setIsViewingCv(false); }
   };
-
-  const handlePhotoOption = async (option: "camera" | "gallery" | "remove") => {
+  const handlePhotoOption = async (option: any) => {
     setPhotoModalVisible(false);
     if (!isOwnProfile) return;
     setTimeout(async () => {
-      if (option === "remove") {
-        setFormData(prev => ({ ...prev, profileImageUrl: null as any }));
-        return;
-      }
+      if (option === "remove") { setFormData(prev => ({ ...prev, profileImageUrl: null as any })); return; }
       const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.4, base64: true };
       try {
-        const result = option === "camera" 
-          ? await ImagePicker.launchCameraAsync(opts) 
-          : await ImagePicker.launchImageLibraryAsync(opts);
-
+        const result = option === "camera" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
         if (!result.canceled && result.assets?.[0].base64) {
           setFormData(prev => ({ ...prev, profileImageUrl: `data:image/jpeg;base64,${result.assets[0].base64}` }));
         }
@@ -353,7 +328,16 @@ export default function Profile() {
     }, 400);
   };
 
-  // --- Render Helpers ---
+  const renderStars = (rating: number, interactive = false) => (
+      <View style={{flexDirection: 'row', gap: 4}}>
+          {[1, 2, 3, 4, 5].map(star => (
+              <TouchableOpacity key={star} disabled={!interactive} onPress={() => setNewRating(star)}>
+                  <Ionicons name={star <= rating ? "star" : "star-outline"} size={interactive ? 32 : 14} color="#F59E0B" />
+              </TouchableOpacity>
+          ))}
+      </View>
+  );
+
   const TagGroup = ({ title, tags, color }: any) => {
     if (!tags) return null;
     const items = tags.split(",").filter((i: string) => i.trim());
@@ -374,9 +358,7 @@ export default function Profile() {
 
   const InfoItem = ({ icon, label, value }: any) => (
     <View style={styles.infoRow}>
-      <View style={[styles.infoIconBox]}>
-        <Ionicons name={icon} size={18} color={"#64748B"} />
-      </View>
+      <View style={[styles.infoIconBox]}><Ionicons name={icon} size={18} color={"#64748B"} /></View>
       <View style={{ flex: 1 }}>
         <Text style={styles.infoLabel}>{label}</Text>
         <Text style={[styles.infoValue]}>{value || "Not Set"}</Text>
@@ -384,16 +366,10 @@ export default function Profile() {
     </View>
   );
 
-  // Loading State
-  if (!displayUser) {
-      return (
-        <View style={styles.center}>
-            <ActivityIndicator size="large" color="#2563EB" />
-        </View>
-      );
-  }
+  if (!displayUser) return <View style={styles.center}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
   const activeImage = isEditing ? formData.profileImageUrl : displayUser.profileImageUrl;
+  const isClient = displayUser.userType === 1;
 
   return (
     <View style={styles.container}>
@@ -447,19 +423,11 @@ export default function Profile() {
                 ) : (
                     <>
                       <Text style={styles.nameDark}>{displayUser.fullName}</Text>
-                      {displayUser.jobTitle && <Text style={styles.headlineDark}>{displayUser.jobTitle}</Text>}
+                      <Text style={styles.headlineDark}>{isClient ? "Client" : displayUser.jobTitle || "Freelancer"}</Text>
                     </>
                 )}
 
-                <View style={styles.metaRow}>
-                    <View style={styles.roleBadgeDark}>
-                        <Text style={styles.roleTextDark}>{displayUser.userType === 1 ? "Client" : "Freelancer"}</Text>
-                    </View>
-                    <View style={styles.dotSeparator} />
-                    <Ionicons name="location-sharp" size={14} color="rgba(255,255,255,0.7)" /> 
-                    <Text style={styles.locationDark}> {displayUser.city || "Remote"}</Text>
-                </View>
-
+                {/* --- STATS --- */}
                 <View style={styles.statsRowDark}>
                     <View style={styles.stat}>
                         <Text style={styles.statNumDark}>{stats.averageRating || "N/A"}</Text>
@@ -468,21 +436,48 @@ export default function Profile() {
                     <View style={styles.statDividerDark} />
                     <View style={styles.stat}>
                         <Text style={styles.statNumDark}>{stats.completedJobs}</Text>
-                        <Text style={styles.statLabelDark}>Jobs</Text>
+                        <Text style={styles.statLabelDark}>{isClient ? "Hires" : "Jobs"}</Text>
                     </View>
                     <View style={styles.statDividerDark} />
                     <View style={styles.stat}>
-                        {isEditing ? (
-                           <View style={{flexDirection:'row', alignItems:'center'}}>
-                             <Text style={{color:'white', fontSize:12, marginRight:5}}>$</Text>
-                             <TextInput value={formData.hourlyRate?.toString()} onChangeText={t => setFormData({...formData, hourlyRate: Number(t)})} placeholder="20" keyboardType="numeric" style={{color:'white', borderBottomWidth:1, borderColor:'white', width:30, textAlign:'center'}} />
-                           </View>
-                        ) : (
-                           <Text style={styles.statNumDark}>${displayUser.hourlyRate || "0"}</Text>
-                        )}
-                        <Text style={styles.statLabelDark}>Hourly</Text>
+                        <Text style={styles.statNumDark}>
+                             {isClient 
+                                ? (displayUser.createdAt ? new Date(displayUser.createdAt).getFullYear() : new Date().getFullYear()) 
+                                : `$${displayUser.hourlyRate || "0"}`}
+                        </Text>
+                        <Text style={styles.statLabelDark}>{isClient ? "Joined" : "Hourly"}</Text>
                     </View>
                 </View>
+
+                {/* --- ACTION BAR --- */}
+                {!isOwnProfile && !isEditing && (
+                    <View style={styles.actionBar}>
+                        {connectionStatus === "Accepted" ? (
+                            <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleMessage}>
+                                <Ionicons name="chatbubble-ellipses" size={20} color="#FFF" />
+                                <Text style={styles.actionBtnText}>Message</Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity 
+                                style={[styles.actionBtnPrimary, connectionStatus === "Pending" && styles.actionBtnDisabled]} 
+                                onPress={handleConnect}
+                                disabled={connectionStatus === "Pending" || connecting}
+                            >
+                                {connecting ? <ActivityIndicator color="#FFF" /> : (
+                                    <>
+                                        <Ionicons name={connectionStatus === "Pending" ? "time" : "person-add"} size={20} color="#FFF" />
+                                        <Text style={styles.actionBtnText}>{connectionStatus === "Pending" ? "Pending" : "Connect"}</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => setRateModalVisible(true)}>
+                            <Ionicons name="star-outline" size={20} color="#FFF" />
+                            <Text style={styles.actionBtnText}>Rate</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </View>
         </LinearGradient>
 
@@ -503,37 +498,33 @@ export default function Profile() {
                 </View>
             </View>
 
+            {/* About */}
+            <View style={styles.section}>
+                <Text style={styles.sectionHeader}>About Me</Text>
+                {isEditing ? (
+                    <TextInput style={styles.textArea} multiline value={formData.profileBio} onChangeText={t => setFormData({...formData, profileBio: t})} placeholder="Describe your background..." />
+                ) : (
+                    <Text style={styles.bioText}>{displayUser.profileBio || "No biography added yet."}</Text>
+                )}
+            </View>
+
             {/* Resources */}
             <View style={styles.section}>
                 <Text style={styles.sectionHeader}>Professional Resources</Text>
-                
-                {/* LinkedIn */}
                 <View style={styles.resourceRow}>
                     <View style={styles.resourceIcon}><Ionicons name="logo-linkedin" size={20} color="#0077B5" /></View>
                     <View style={{flex:1}}>
                         <Text style={styles.resourceLabel}>LinkedIn Profile</Text>
                         {isEditing ? (
-                            <TextInput 
-                                style={styles.inputCompact} 
-                                value={formData.linkedinUrl} 
-                                onChangeText={t => setFormData({...formData, linkedinUrl: t})} 
-                                placeholder="https://linkedin.com/in/..." 
-                            />
+                            <TextInput style={styles.inputCompact} value={formData.linkedinUrl} onChangeText={t => setFormData({...formData, linkedinUrl: t})} placeholder="https://linkedin.com/in/..." />
                         ) : (
                             <View>
                                 {displayUser.linkedinUrl ? (
-                                    <TouchableOpacity onPress={openLinkedinLink}>
-                                        <Text style={[styles.resourceValue, styles.linkText]}>View Profile</Text>
-                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={openLinkedinLink}><Text style={[styles.resourceValue, styles.linkText]}>View Profile</Text></TouchableOpacity>
                                 ) : (
                                     isAddingLinkedin && isOwnProfile ? (
                                         <View style={styles.directAddRow}>
-                                            <TextInput 
-                                                style={[styles.inputCompact, {flex:1, marginTop:0}]} 
-                                                value={tempLinkedin} 
-                                                onChangeText={setTempLinkedin}
-                                                placeholder="Paste URL..."
-                                            />
+                                            <TextInput style={[styles.inputCompact, {flex:1, marginTop:0}]} value={tempLinkedin} onChangeText={setTempLinkedin} placeholder="Paste URL..." />
                                             <TouchableOpacity onPress={saveLinkedinDirectly} style={styles.directSaveBtn}><Ionicons name="checkmark" size={18} color="white" /></TouchableOpacity>
                                             <TouchableOpacity onPress={() => setIsAddingLinkedin(false)} style={styles.directCancelBtn}><Ionicons name="close" size={18} color="#64748B" /></TouchableOpacity>
                                         </View>
@@ -550,10 +541,7 @@ export default function Profile() {
                         )}
                     </View>
                 </View>
-                
                 <View style={styles.divider} />
-
-                {/* CV */}
                 <View style={styles.resourceRow}>
                     <View style={styles.resourceIcon}><Ionicons name="document-text" size={20} color="#EF4444" /></View>
                     <View style={{flex:1}}>
@@ -574,45 +562,20 @@ export default function Profile() {
                             </View>
                         ) : (
                             <View>
-                                {displayUser.cvUrl ? (
-                                    <Text style={styles.resourceValue}>Resume Available</Text>
-                                ) : (
-                                    isOwnProfile ? (
-                                        <TouchableOpacity style={styles.directAddBtn} onPress={handleCvUpload} disabled={isUploadingCv}>
-                                            {isUploadingCv ? (
-                                                <ActivityIndicator size="small" color="#2563EB" />
-                                            ) : (
-                                                <>
-                                                    <Ionicons name="cloud-upload-outline" size={16} color="#2563EB" />
-                                                    <Text style={styles.directAddText}>Upload PDF</Text>
-                                                </>
-                                            )}
-                                        </TouchableOpacity>
-                                    ) : <Text style={styles.resourceValue}>No Resume</Text>
+                                {displayUser.cvUrl ? <Text style={styles.resourceValue}>Resume Available</Text> : (
+                                    isOwnProfile ? <TouchableOpacity style={styles.directAddBtn} onPress={handleCvUpload} disabled={isUploadingCv}><Text style={styles.directAddText}>Upload PDF</Text></TouchableOpacity> : <Text style={styles.resourceValue}>No Resume</Text>
                                 )}
                             </View>
                         )}
                     </View>
                     {!isEditing && displayUser.cvUrl && (
-                        <TouchableOpacity style={styles.viewCvBtn} onPress={handleViewCv} disabled={isViewingCv}>
-                            {isViewingCv ? <ActivityIndicator size="small" color="#64748B"/> : <Text style={styles.viewCvText}>View</Text>}
-                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.viewCvBtn} onPress={handleViewCv} disabled={isViewingCv}><Text style={styles.viewCvText}>View</Text></TouchableOpacity>
                     )}
                 </View>
             </View>
 
-            {/* About */}
-            <View style={styles.section}>
-                <Text style={styles.sectionHeader}>About Me</Text>
-                {isEditing ? (
-                    <TextInput style={styles.textArea} multiline value={formData.profileBio} onChangeText={t => setFormData({...formData, profileBio: t})} placeholder="Describe your background..." />
-                ) : (
-                    <Text style={styles.bioText}>{displayUser.profileBio || "No biography added yet."}</Text>
-                )}
-            </View>
-
-            {/* Tech Stack */}
-            {!isEditing && aiProfile && (
+            {/* ✅ TECH STACK */}
+            {!isEditing && !isClient && aiProfile && (
                 <View style={styles.section}>
                     <View style={styles.aiHeader}>
                         <Text style={styles.sectionHeader}>Tech Stack</Text>
@@ -624,29 +587,11 @@ export default function Profile() {
                 </View>
             )}
 
-            {/* Contact */}
-            <View style={styles.section}>
-                <Text style={styles.sectionHeader}>Contact</Text>
-                {isEditing ? (
-                    <View style={styles.infoStack}>
-                        <TextInput style={styles.inputField} value={formData.email} onChangeText={t => setFormData({...formData, email: t})} placeholder="Email" />
-                        <TextInput style={styles.inputField} value={formData.phoneNumber} onChangeText={t => setFormData({...formData, phoneNumber: t})} placeholder="Phone" />
-                    </View>
-                ) : (
-                    <View style={styles.infoStack}>
-                        <InfoItem icon="mail-outline" label="Email" value={displayUser.email} />
-                        <InfoItem icon="call-outline" label="Phone" value={displayUser.phoneNumber} />
-                    </View>
-                )}
-            </View>
-
             {/* Location */}
             <View style={styles.section}>
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
                     <Text style={styles.sectionHeader}>Location</Text>
-                    {isEditing && (
-                         <TouchableOpacity onPress={() => setCityModalVisible(true)}><Text style={{color: '#2563EB', fontWeight: '600'}}>Change City</Text></TouchableOpacity>
-                    )}
+                    {isEditing && <TouchableOpacity onPress={() => setCityModalVisible(true)}><Text style={{color: '#2563EB', fontWeight: '600'}}>Change City</Text></TouchableOpacity>}
                 </View>
                 <View style={styles.mapContainer}>
                     <MapView ref={mapRef} style={styles.map} region={region} scrollEnabled={false} zoomEnabled={false}>
@@ -655,7 +600,34 @@ export default function Profile() {
                 </View>
             </View>
 
-            {/* Actions (Only show Logout/Save if it's YOUR profile) */}
+            {/* ✅ REVIEWS SECTION */}
+            <View style={styles.section}>
+                <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
+                    <Text style={styles.sectionHeader}>Reviews</Text>
+                    <View style={{backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12}}>
+                        <Text style={{fontWeight: '700', color: '#64748B'}}>{reviews.length}</Text>
+                    </View>
+                </View>
+                {reviews.length === 0 ? (
+                    <Text style={styles.bioText}>No reviews yet.</Text>
+                ) : (
+                    reviews.map((rev, index) => (
+                        <View key={index} style={styles.reviewCard}>
+                            <View style={styles.reviewHeader}>
+                                <Image source={{uri: rev.reviewer?.profileImageUrl || "https://via.placeholder.com/50"}} style={styles.reviewAvatar} />
+                                <View>
+                                    <Text style={styles.reviewerName}>{rev.reviewer?.fullName || "User"}</Text>
+                                    <Text style={styles.reviewDate}>{new Date(rev.createdAt).toLocaleDateString()}</Text>
+                                </View>
+                                <View style={{marginLeft: 'auto'}}>{renderStars(rev.rating)}</View>
+                            </View>
+                            <Text style={styles.reviewComment}>{rev.comment}</Text>
+                        </View>
+                    ))
+                )}
+            </View>
+
+            {/* Actions */}
             {isOwnProfile && (
                 isEditing ? (
                     <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
@@ -671,7 +643,32 @@ export default function Profile() {
         </Animated.View>
       </ScrollView>
 
-      {/* --- MODALS --- */}
+      {/* --- RATING MODAL (FIXED KEYBOARD) --- */}
+      <Modal visible={rateModalVisible} transparent animationType="fade" onRequestClose={() => setRateModalVisible(false)}>
+          <TouchableWithoutFeedback onPress={() => { setRateModalVisible(false); Keyboard.dismiss(); }}>
+              <View style={styles.modalBackdrop}>
+                  <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{width: '100%', alignItems: 'center'}}>
+                      <TouchableWithoutFeedback>
+                          <View style={styles.ratingModal}>
+                              <Text style={styles.ratingTitle}>Rate {displayUser.fullName}</Text>
+                              <View style={styles.starRow}>{renderStars(newRating, true)}</View>
+                              <TextInput style={styles.ratingInput} multiline placeholder="Share your experience..." value={newComment} onChangeText={setNewComment} />
+                              <View style={styles.ratingActions}>
+                                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setRateModalVisible(false)}>
+                                      <Text style={styles.cancelText}>Cancel</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitReview} disabled={submittingReview}>
+                                      {submittingReview ? <ActivityIndicator color="#FFF"/> : <Text style={styles.submitText}>Submit</Text>}
+                                  </TouchableOpacity>
+                              </View>
+                          </View>
+                      </TouchableWithoutFeedback>
+                  </KeyboardAvoidingView>
+              </View>
+          </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Standard Modals */}
       <Modal visible={photoModalVisible} transparent onRequestClose={() => setPhotoModalVisible(false)}>
          <TouchableWithoutFeedback onPress={() => setPhotoModalVisible(false)}><View style={styles.modalBackdrop} /></TouchableWithoutFeedback>
          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
@@ -685,12 +682,6 @@ export default function Profile() {
                 <Ionicons name="images-outline" size={24} color="#0F172A" style={{marginRight:15}}/>
                 <Text style={styles.sheetText}>Choose from Gallery</Text>
             </TouchableOpacity>
-            {(formData.profileImageUrl || displayUser.profileImageUrl) && (
-                <TouchableOpacity style={styles.sheetItem} onPress={() => handlePhotoOption("remove")}>
-                    <Ionicons name="trash-outline" size={24} color="#DC2626" style={{marginRight:15}}/>
-                    <Text style={[styles.sheetText, { color: '#DC2626' }]}>Remove Photo</Text>
-                </TouchableOpacity>
-            )}
          </Animated.View>
       </Modal>
 
@@ -742,38 +733,38 @@ const styles = StyleSheet.create({
   statNumDark: { fontSize: 18, fontWeight: '700', color: '#FFF' },
   statLabelDark: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginTop: 2, textTransform: 'uppercase' },
   statDividerDark: { width: 1, height: '70%', backgroundColor: 'rgba(255,255,255,0.1)' },
+  
+  actionBar: { flexDirection: 'row', gap: 12, marginTop: 24, width: '100%' },
+  actionBtnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563EB', height: 48, borderRadius: 14, gap: 8 },
+  actionBtnDisabled: { backgroundColor: '#64748B' },
+  actionBtnSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)', height: 48, borderRadius: 14, gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  actionBtnText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
+
   bodyContainer: { paddingHorizontal: 20, marginTop: 24 },
   section: { backgroundColor: 'white', borderRadius: 20, padding: 20, marginBottom: 16, shadowColor: "#64748B", shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
   sectionHeader: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
   sectionHeaderMb0: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statusDot: { width: 10, height: 10, borderRadius: 5 },
   bioText: { fontSize: 15, color: '#475569', lineHeight: 24 },
   textArea: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, height: 100, textAlignVertical: 'top', fontSize: 15, borderWidth: 1, borderColor: '#E2E8F0' },
-  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  langChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  langText: { fontSize: 14, color: '#334155', fontWeight: '500' },
-  aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  confidenceBadge: { backgroundColor: '#F0FDF4', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#DCFCE7' },
-  confidenceText: { fontSize: 12, color: '#16A34A', fontWeight: '700' },
-  tagGroup: { marginBottom: 12 },
-  tagTitle: { fontSize: 13, color: '#94A3B8', fontWeight: '600', marginBottom: 8, textTransform: 'uppercase' },
-  tagContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
-  tagText: { fontSize: 13, fontWeight: '600' },
-  infoStack: { gap: 12 },
-  infoRow: { flexDirection: 'row', alignItems: 'center' },
-  infoIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  infoLabel: { fontSize: 12, color: '#94A3B8' },
-  infoValue: { fontSize: 15, color: '#0F172A', fontWeight: '500' },
-  inputField: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 10 },
-  mapContainer: { height: 160, borderRadius: 16, overflow: 'hidden', marginTop: 10 },
-  map: { width: '100%', height: '100%' },
-  saveBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 16, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
-  saveBtnText: { color: 'white', fontSize: 16, fontWeight: '700' },
-  logoutBtn: { backgroundColor: '#FEF2F2', padding: 18, borderRadius: 16, alignItems: 'center' },
-  logoutText: { color: '#EF4444', fontSize: 16, fontWeight: '700' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  
+  reviewCard: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  reviewAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: '#E2E8F0' },
+  reviewerName: { fontWeight: '700', color: '#0F172A' },
+  reviewDate: { fontSize: 12, color: '#94A3B8' },
+  reviewComment: { color: '#334155', lineHeight: 20 },
+
+  ratingModal: { width: '85%', backgroundColor: '#FFF', borderRadius: 24, padding: 24, alignItems: 'center' },
+  ratingTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 20 },
+  starRow: { marginBottom: 20 },
+  ratingInput: { width: '100%', height: 100, backgroundColor: '#F8FAFC', borderRadius: 12, padding: 16, textAlignVertical: 'top', marginBottom: 20, borderWidth: 1, borderColor: '#E2E8F0' },
+  ratingActions: { flexDirection: 'row', gap: 12, width: '100%' },
+  cancelBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center' },
+  cancelText: { fontWeight: '700', color: '#64748B' },
+  submitBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#2563EB', alignItems: 'center' },
+  submitText: { fontWeight: '700', color: '#FFF' },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   bottomSheet: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
   sheetTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', textAlign: 'center', marginBottom: 24 },
@@ -784,7 +775,12 @@ const styles = StyleSheet.create({
   cityTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   cityRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
   cityText: { fontSize: 16, color: '#334155' },
-  
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  saveBtn: { backgroundColor: '#0F172A', padding: 18, borderRadius: 16, alignItems: 'center', shadowColor: '#0F172A', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+  saveBtnText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  logoutBtn: { backgroundColor: '#FEF2F2', padding: 18, borderRadius: 16, alignItems: 'center', marginTop: 20 },
+  logoutText: { color: '#EF4444', fontSize: 16, fontWeight: '700' },
   resourceRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4 },
   resourceIcon: { marginRight: 12, marginTop: 2, width: 32, height: 32, borderRadius: 8, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
   resourceLabel: { fontSize: 12, color: '#94A3B8', marginBottom: 4 },
@@ -802,5 +798,21 @@ const styles = StyleSheet.create({
   directAddText: { color: '#2563EB', fontWeight: '600', marginLeft: 6, fontSize: 14 },
   directAddRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   directSaveBtn: { backgroundColor: '#2563EB', width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  directCancelBtn: { backgroundColor: '#F1F5F9', width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }
+  directCancelBtn: { backgroundColor: '#F1F5F9', width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  tagGroup: { marginBottom: 12 },
+  tagTitle: { fontSize: 13, color: '#94A3B8', fontWeight: '600', marginBottom: 8, textTransform: 'uppercase' },
+  tagContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  tagText: { fontSize: 13, fontWeight: '600' },
+  infoStack: { gap: 12 },
+  infoRow: { flexDirection: 'row', alignItems: 'center' },
+  infoIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  infoLabel: { fontSize: 12, color: '#94A3B8' },
+  infoValue: { fontSize: 15, color: '#0F172A', fontWeight: '500' },
+  inputField: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 10 },
+  mapContainer: { height: 160, borderRadius: 16, overflow: 'hidden', marginTop: 10 },
+  map: { width: '100%', height: '100%' },
+  aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  confidenceBadge: { backgroundColor: '#F0FDF4', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#DCFCE7' },
+  confidenceText: { fontSize: 12, color: '#16A34A', fontWeight: '700' },
 });

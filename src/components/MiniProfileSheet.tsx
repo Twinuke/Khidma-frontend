@@ -33,22 +33,18 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
 
   useEffect(() => {
     if (visible && userId) {
-      // Reset state
       setUser(null);
       setAiProfile(null);
       setLoading(true);
       
-      // Animate In
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
         damping: 15,
       }).start();
 
-      // Fetch Data
       fetchData(userId);
     } else {
-      // Animate Out
       Animated.timing(slideAnim, {
         toValue: height,
         duration: 200,
@@ -79,8 +75,9 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
 
   const handleViewFullProfile = () => {
     onClose();
-    // Navigate to full profile, passing userId
-    navigation.push('Profile', { userId });
+    // ✅ FIX: Navigate to 'UserProfile' (Stack) instead of 'Profile' (Tab)
+    // This allows the "Back" button to work correctly.
+    navigation.navigate('UserProfile', { userId });
   };
 
   const Tag = ({ text, color }: { text: string; color: string }) => (
@@ -110,7 +107,6 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
             </View>
           ) : user ? (
             <>
-              {/* Header: Avatar + Name + Rating */}
               <View style={styles.header}>
                 <Image
                   source={{
@@ -120,7 +116,12 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
                 />
                 <View style={styles.headerInfo}>
                   <Text style={styles.name}>{user.fullName}</Text>
-                  <Text style={styles.jobTitle}>{user.jobTitle || "Freelancer"}</Text>
+                  
+                  {/* ✅ FIX: Correctly display Client vs Freelancer */}
+                  <Text style={styles.jobTitle}>
+                    {user.userType === 1 ? "Client" : (user.jobTitle || "Freelancer")}
+                  </Text>
+                  
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={14} color="#F59E0B" />
                     <Text style={styles.ratingText}> 4.9 • {user.city || "Remote"}</Text>
@@ -130,7 +131,6 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
 
               <View style={styles.divider} />
 
-              {/* Skills / Tags */}
               {aiProfile && (
                 <View style={styles.tagsSection}>
                   <Text style={styles.sectionLabel}>Top Skills</Text>
@@ -145,7 +145,6 @@ export const MiniProfileSheet = ({ visible, userId, onClose }: MiniProfileSheetP
                 </View>
               )}
 
-              {/* Action Button */}
               <TouchableOpacity style={styles.fullProfileBtn} onPress={handleViewFullProfile}>
                 <Text style={styles.fullProfileText}>View Full Profile</Text>
                 <Ionicons name="arrow-forward" size={18} color="white" />

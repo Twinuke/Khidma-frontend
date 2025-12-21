@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,6 +22,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { JobCard } from "../../components/JobCard";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
@@ -28,7 +30,6 @@ import { Job } from "../types/job";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-// ✅ PROFESSIONAL COLORS
 const COLORS = {
   bg: "#F8FAFC",
   card: "#FFFFFF",
@@ -38,7 +39,7 @@ const COLORS = {
   border: "#E2E8F0",
   inputBg: "#F1F5F9",
   primary: "#2563EB",
-  accent: "#8B5CF6", // AI Purple
+  accent: "#8B5CF6",
   backdrop: "rgba(15, 23, 42, 0.6)",
   chipBg: "#EEF2FF",
   danger: "#EF4444",
@@ -49,101 +50,151 @@ const COLORS = {
 const FILTERS = ["All", "Development", "Design", "Marketing", "Writing", "Video", "Finance"] as const;
 const AI_FILTER = "✨ AI Match";
 
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(t);
-  }, [value, delayMs]);
-  return debounced;
-}
-
 export default function Jobs() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { user } = useUser();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  // ✅ AI Thinking State
   const [aiThinking, setAiThinking] = useState(false);
+  const [isAiActive, setIsAiActive] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedQuery = useDebouncedValue(searchQuery, 350);
-
   const [activeFilter, setActiveFilter] = useState<string>("All");
   const [isFilterVisible, setFilterVisible] = useState(false);
 
-  // Animations
+  // Refs
+  const flatListRef = useRef<FlatList>(null); // ✅ Added Ref for scrolling
+
+  // Animations for Modals/Loading
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current; 
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
-  const isAiMode = activeFilter === AI_FILTER;
+  // Magical Button Animations
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  const iconSpin = useRef(new Animated.Value(0)).current;
+  const iconShimmer = useRef(new Animated.Value(1)).current;
 
   useFocusEffect(
     useCallback(() => {
-      fetchJobs(true);
-    }, [user?.userId, activeFilter, debouncedQuery])
+      if (!isAiActive) {
+        fetchJobs();
+      }
+    }, [activeFilter])
   );
 
-  const fetchJobs = async (isRefresh = false) => {
-    if (!user?.userId) return;
-    if (loading && !isRefresh && !aiThinking) return;
+  // START MAGICAL ANIMATIONS
+  useEffect(() => {
+    Animated.loop(
+        Animated.sequence([
+            Animated.timing(buttonScale, { toValue: 1.08, duration: 2000, useNativeDriver: true, easing: Easing.inOut(Easing.quad) }),
+            Animated.timing(buttonScale, { toValue: 1, duration: 2000, useNativeDriver: true, easing: Easing.inOut(Easing.quad) })
+        ])
+    ).start();
 
-    // ✅ FORCE "THINKING" MODE FOR AI FILTER
-    if (activeFilter === AI_FILTER) {
-        setJobs([]); // Clear list instantly
-        setAiThinking(true); 
-        startAiAnimation();
-        // ⏳ 2.5s Deliberate Delay for "Magic" Effect
-        await new Promise((r) => setTimeout(r, 2500)); 
-    } else {
-        setLoading(true);
-    }
+    Animated.loop(
+        Animated.timing(iconSpin, {
+            toValue: 1,
+            duration: 12000, 
+            easing: Easing.linear,
+            useNativeDriver: true,
+        })
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+          Animated.timing(iconShimmer, { toValue: 0.5, duration: 2500, useNativeDriver: true }), 
+          Animated.timing(iconShimmer, { toValue: 1, duration: 2500, useNativeDriver: true })   
+      ])
+  ).start();
+  }, []);
+
+  const spin = iconSpin.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg']
+  });
+
+  const fetchJobs = async (customQuery?: string) => {
+    if (!user?.userId) return;
+    if (!refreshing && !aiThinking) setLoading(true);
 
     try {
-      let data: any[] = [];
-
-      if (activeFilter === AI_FILTER) {
-        try {
-          const response = await api.get(`/AiJobs/recommended/${user.userId}`);
-          data = response.data || [];
-        } catch (error: any) {
-          if (error.response?.status === 404) data = [];
-          else console.error(error);
-        }
-      } else {
-        const response = await api.get("/Jobs/search", {
+        const queryToUse = customQuery !== undefined ? customQuery : searchQuery;
+        
+        const response = await api.get("/Jobs", {
           params: {
-            query: debouncedQuery?.trim() || "",
-            category: FILTERS.includes(activeFilter as any) && activeFilter !== "All" ? activeFilter : undefined,
-            page: 1,
-            pageSize: 20,
-            currentUserId: user.userId,
+            search: queryToUse || "", 
+            category: activeFilter !== "All" && activeFilter !== AI_FILTER ? activeFilter : undefined,
           },
         });
-        data = response.data?.data ?? response.data ?? [];
-      }
-
-      setJobs(Array.isArray(data) ? data : []);
+        
+        const data = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+        setJobs(data);
     } catch (err) {
-      console.error(err);
+      console.error("Fetch Jobs Error:", err);
       setJobs([]);
     } finally {
       setLoading(false);
-      setAiThinking(false);
       setRefreshing(false);
     }
+  };
+
+  const handleAiMatch = async () => {
+      if (!user) return;
+      
+      Keyboard.dismiss();
+      setJobs([]); 
+      setAiThinking(true); 
+      setIsAiActive(true); 
+      setActiveFilter("All"); 
+      setSearchQuery(""); 
+
+      startAiAnimation(); 
+
+      try {
+          const profileRes = await api.get(`/Onboarding/${user?.userId}`);
+          const profile = profileRes.data;
+          
+          let hiddenSearchTerms = "";
+          
+          if (profile) {
+              const skills = profile.selectedSkills ? profile.selectedSkills.split(",") : [];
+              const domains = profile.selectedDomains ? profile.selectedDomains.split(",") : [];
+              
+              const allKeywords = [...domains, ...skills]
+                  .map((s: string) => s.trim())
+                  .filter((s: string) => s.length > 0);
+
+              if (allKeywords.length > 0) {
+                  hiddenSearchTerms = allKeywords.join(" "); 
+              }
+          }
+
+          await new Promise((r) => setTimeout(r, 2500)); 
+
+          if (hiddenSearchTerms) {
+              await fetchJobs(hiddenSearchTerms);
+          } else {
+              await fetchJobs("Development"); 
+          }
+
+      } catch (error) {
+          console.error("AI Fetch Error", error);
+          setJobs([]);
+      } finally {
+          setAiThinking(false);
+      }
   };
 
   const startAiAnimation = () => {
     pulseAnim.setValue(1);
     rotateAnim.setValue(0);
 
-    // Pulse Effect
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.2, duration: 800, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
@@ -151,17 +202,22 @@ export default function Jobs() {
       ])
     ).start();
 
-    // Slow Rotation for Background Ring
     Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
-        duration: 3000,
+        duration: 2000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
     ).start();
   };
 
+  // --- Scrolling ---
+  const scrollToTop = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  // --- Modal Logic ---
   const openModal = () => {
     Keyboard.dismiss();
     setFilterVisible(true);
@@ -181,154 +237,217 @@ export default function Jobs() {
   };
 
   const selectFilter = (filter: string) => {
-    setActiveFilter(filter);
-    closeModal();
+    if (filter === AI_FILTER) {
+        closeModal();
+        handleAiMatch();
+    } else {
+        setIsAiActive(false); 
+        setActiveFilter(filter);
+        closeModal();
+    }
   };
 
-  const clearFilter = () => setActiveFilter("All");
+  const clearFilter = () => {
+      setActiveFilter("All");
+      setIsAiActive(false);
+      setSearchQuery("");
+      fetchJobs(""); 
+  };
 
-  // ✅ IMPROVED PAN RESPONDER (Easier Drag)
   const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true, // Capture touches immediately on the sheet background
-    onMoveShouldSetPanResponder: (_, g) => g.dy > 5, // Start dragging if moved down by 5px
-    onPanResponderMove: (_, g) => { 
-        if (g.dy > 0) slideAnim.setValue(g.dy); // Follow finger
-    },
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
+    onPanResponderMove: (_, g) => { if (g.dy > 0) slideAnim.setValue(g.dy); },
     onPanResponderRelease: (_, g) => {
-      // If dragged down significantly or flicked fast
       if (g.dy > 120 || g.vy > 0.5) closeModal();
       else Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 12 }).start();
     },
   }), [slideAnim]);
 
-  // --- Components ---
-  const Header = () => (
-    <View style={styles.headerWrap}>
-      <View style={styles.headerTop}>
-        <View>
-          <Text style={styles.kicker}>Discover</Text>
-          {/* ✅ Professional Title */}
-          <Text style={styles.title}>Find Work</Text>
-        </View>
-        <TouchableOpacity style={styles.notifBtn} activeOpacity={0.8} onPress={() => navigation.navigate("Notifications")}>
-          <Ionicons name="notifications-outline" size={22} color={COLORS.text} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchRow}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color={COLORS.muted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search jobs..."
-            placeholderTextColor={COLORS.muted}
-            value={searchQuery}
-            onChangeText={(t) => { if (isAiMode) setActiveFilter("All"); setSearchQuery(t); }}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery("")} hitSlop={12} style={styles.clearBtn}>
-              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
-            </Pressable>
-          )}
-        </View>
-        <TouchableOpacity 
-          style={[styles.filterBtn, activeFilter !== "All" && styles.filterBtnActive]} 
-          activeOpacity={0.85} 
-          onPress={openModal}
-        >
-          <Ionicons name={activeFilter !== "All" ? "options" : "options-outline"} size={20} color={activeFilter !== "All" ? "#fff" : COLORS.text} />
-        </TouchableOpacity>
-      </View>
-
-      {activeFilter !== "All" && !isAiMode && (
-        <View style={styles.pillRow}>
-          <View style={styles.pill}>
-            <Text style={styles.pillText}>Filter: {activeFilter}</Text>
-            <Pressable onPress={clearFilter} hitSlop={10}><Ionicons name="close" size={16} color={COLORS.primary} /></Pressable>
+  // --- Render Header ---
+  const renderHeaderComponent = () => (
+    <View style={styles.headerContainer}>
+      <LinearGradient
+        colors={["#0F172A", "#1E293B", "#334155"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.gradientHeader, { paddingTop: insets.top + 20 }]}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.headerLeft}>
+            {/* ✅ Back Button */}
+            <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            
+            {/* ✅ Professional Title */}
+            <TouchableOpacity activeOpacity={0.8} onPress={scrollToTop}>
+                <Text style={styles.greeting}>Job Market</Text>
+                <Text style={styles.subGreeting}>Explore premium opportunities</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      )}
-    </View>
-  );
 
-  const AiHeader = () => (
-    <View style={styles.aiHeaderContainer}>
-        <View style={styles.aiBanner}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                <Ionicons name="sparkles" size={16} color={COLORS.accent} />
-                <Text style={styles.aiBannerText}>Curated based on your profile</Text>
+          {/* Notification Button */}
+          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("Notifications")}>
+            <Ionicons name="notifications-outline" size={22} color="#FFF" />
+            <View style={styles.redDot} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Search Row */}
+        <View style={styles.searchRow}>
+            <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color="#94A3B8" style={{ marginRight: 10 }} />
+                <TextInput
+                    placeholder="Search jobs..."
+                    placeholderTextColor="#94A3B8"
+                    style={styles.searchInput}
+                    value={searchQuery}
+                    onChangeText={(t) => { 
+                        if (isAiActive) setIsAiActive(false); 
+                        setSearchQuery(t); 
+                    }}
+                    onSubmitEditing={() => fetchJobs()} 
+                    returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => { setSearchQuery(""); setIsAiActive(false); fetchJobs(""); }}>
+                        <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                    </TouchableOpacity>
+                )}
             </View>
+
+            {/* Magical AI Button */}
             <TouchableOpacity 
-                style={styles.retakeBtn} 
-                onPress={() => navigation.navigate("OnboardingScreen")}
+                onPress={handleAiMatch}
+                disabled={aiThinking}
+                activeOpacity={0.9}
             >
-                <Text style={styles.retakeText}>Edit</Text>
+                <Animated.View style={[
+                    styles.aiButton, 
+                    { transform: [{ scale: buttonScale }] }
+                ]}>
+                    <LinearGradient
+                        colors={isAiActive ? ["#6366F1", "#818CF8"] : ["#4F46E5", "#7C3AED"]}
+                        style={styles.aiGradient}
+                    >
+                        <Animated.View style={{ 
+                            transform: [{ rotate: spin }],
+                            opacity: iconShimmer 
+                        }}>
+                            <Ionicons name="sparkles" size={22} color="#FFF" />
+                        </Animated.View>
+                    </LinearGradient>
+                </Animated.View>
             </TouchableOpacity>
         </View>
+
+        {/* Categories Pills */}
+        <FlatList
+          data={FILTERS}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesList}
+          keyExtractor={(item) => item}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[
+                styles.categoryPill,
+                activeFilter === item && !isAiActive && styles.activeCategoryPill,
+              ]}
+              onPress={() => selectFilter(item)}
+            >
+              <Text
+                style={[
+                  styles.categoryText,
+                  activeFilter === item && !isAiActive && styles.activeCategoryText,
+                ]}
+              >
+                {item}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </LinearGradient>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle="light-content" />
+      
+      <View style={{ zIndex: 10 }}>
+        {renderHeaderComponent()}
+        
+        {/* AI Banner */}
+        {!aiThinking && isAiActive && jobs.length > 0 && (
+            <View style={styles.aiHeaderContainer}>
+                <View style={styles.aiBanner}>
+                    <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                        <Ionicons name="sparkles" size={16} color={COLORS.accent} />
+                        <Text style={styles.aiBannerText}>Matches based on your profile</Text>
+                    </View>
+                    <TouchableOpacity 
+                        style={styles.retakeBtn} 
+                        onPress={() => navigation.navigate("OnboardingScreen")}
+                    >
+                        <Text style={styles.retakeText}>Edit Skills</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        )}
+      </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <FlatList
+          ref={flatListRef}
           data={jobs}
           keyExtractor={(item) => item.jobId.toString()}
           renderItem={({ item }) => (
             <JobCard 
               job={item} 
-              onPress={(job) => navigation.navigate("JobDetails", { jobData: job, jobId: job.jobId })} 
+              onPress={(job: Job) => navigation.navigate("JobDetails", { jobData: job, jobId: job.jobId })} 
             />
           )}
-          ListHeaderComponent={
-            <>
-                <Header />
-                {!aiThinking && isAiMode && jobs.length > 0 && <AiHeader />}
-            </>
-          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onRefresh={() => { setRefreshing(true); fetchJobs(true); }}
+          onRefresh={() => { 
+              setRefreshing(true); 
+              if(isAiActive) handleAiMatch(); 
+              else fetchJobs(); 
+          }}
           refreshing={refreshing}
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
           ListEmptyComponent={
-            // 🧠 BEAUTIFUL AI LOADING SCREEN
+            // AI LOADING SCREEN
             aiThinking ? (
               <View style={styles.aiLoadingContainer}>
                 <View style={styles.aiOrbContainer}>
-                    {/* Rotating Ring */}
                     <Animated.View style={[
                         styles.aiRing, 
                         { transform: [{ rotate: rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }] } 
                     ]} />
-                    {/* Pulsing Core */}
                     <Animated.View style={[styles.aiCore, { transform: [{ scale: pulseAnim }] }]}>
                         <Ionicons name="sparkles" size={32} color="white" />
                     </Animated.View>
                 </View>
-                <Text style={styles.aiTitle}>AI is finding matches...</Text>
-                <Text style={styles.aiSub}>Scanning thousands of jobs for you.</Text>
+                <Text style={styles.aiTitle}>AI is analyzing your skills...</Text>
+                <Text style={styles.aiSub}>Finding the perfect matches for you.</Text>
               </View>
             ) : loading ? (
               <View style={styles.loaderBox}><ActivityIndicator size="large" color={COLORS.primary} /></View>
             ) : (
-              // Empty State
               <View style={styles.emptyState}>
                 <View style={styles.emptyIcon}><Ionicons name="briefcase-outline" size={32} color={COLORS.muted} /></View>
-                <Text style={styles.emptyTitle}>{isAiMode ? "No matches found" : "No jobs found"}</Text>
+                <Text style={styles.emptyTitle}>{isAiActive ? "No matches found" : "No jobs found"}</Text>
                 <Text style={styles.emptyText}>
-                  {isAiMode ? "Try updating your skills to get better results." : "Try adjusting your search filters."}
+                  {isAiActive ? "Try adding different skills to your profile." : "Try adjusting your search filters."}
                 </Text>
-                {isAiMode && (
-                  <TouchableOpacity style={styles.primaryCta} activeOpacity={0.9} onPress={() => navigation.navigate("OnboardingScreen")}>
-                    <Text style={styles.primaryCtaText}>Update Preferences</Text>
-                  </TouchableOpacity>
+                {isAiActive && (
+                    <TouchableOpacity style={styles.primaryCta} onPress={clearFilter}>
+                        <Text style={styles.primaryCtaText}>Show All Jobs</Text>
+                    </TouchableOpacity>
                 )}
               </View>
             )
@@ -345,13 +464,13 @@ export default function Jobs() {
             <Text style={styles.sheetTitle}>Filter Jobs</Text>
             
             <Text style={styles.sectionLabel}>Recommended</Text>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => selectFilter(AI_FILTER)} style={[styles.smartRow, isAiMode && styles.smartRowActive]}>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => selectFilter(AI_FILTER)} style={[styles.smartRow, isAiActive && styles.smartRowActive]}>
               <View style={styles.smartIcon}><Ionicons name="sparkles" size={18} color="#fff" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.smartTitle}>AI Smart Match</Text>
                 <Text style={styles.smartSub}>Personalized for your skills</Text>
               </View>
-              {isAiMode && <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />}
+              {isAiActive && <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />}
             </TouchableOpacity>
 
             <Text style={styles.sectionLabel}>Categories</Text>
@@ -374,24 +493,47 @@ export default function Jobs() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  headerWrap: { paddingTop: Platform.OS === "android" ? 50 : 60, paddingHorizontal: 24, paddingBottom: 16 },
-  headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
-  kicker: { fontSize: 13, letterSpacing: 1, textTransform: "uppercase", color: COLORS.subtext, fontWeight: "700" },
-  title: { fontSize: 28, color: COLORS.text, fontWeight: "800" },
-  notifBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.card, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: COLORS.border },
   
-  searchRow: { flexDirection: "row", gap: 12 },
-  searchBar: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border },
-  searchInput: { flex: 1, fontSize: 16, color: COLORS.text, fontWeight: "500" },
+  // Header
+  headerContainer: {
+    backgroundColor: '#F8FAFC',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    overflow: 'hidden',
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 100
+  },
+  gradientHeader: { paddingBottom: 24, paddingHorizontal: 20 },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  
+  greeting: { fontSize: 20, fontWeight: '700', color: '#FFF' },
+  subGreeting: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+  
+  iconBtn: { width: 44, height: 44, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  redDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#1E293B' },
+
+  // Search Row
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+  searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, paddingHorizontal: 16, height: 52 },
+  searchInput: { flex: 1, height: '100%', fontSize: 15, color: '#0F172A' },
   clearBtn: { padding: 4 },
-  filterBtn: { width: 54, height: 54, borderRadius: 16, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center" },
-  filterBtnActive: { backgroundColor: COLORS.dark, borderColor: COLORS.dark },
+  
+  // AI Button
+  aiButton: { width: 52, height: 52, borderRadius: 16, overflow: 'hidden', shadowColor: "#7C3AED", shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
+  aiGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  pillRow: { marginTop: 12 },
-  pill: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.chipBg },
-  pillText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
+  // Categories
+  categoriesList: { gap: 10, paddingRight: 20 },
+  categoryPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', marginRight: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  activeCategoryPill: { backgroundColor: '#FFF', borderColor: '#FFF' },
+  categoryText: { color: 'rgba(255,255,255,0.8)', fontWeight: '600', fontSize: 13 },
+  activeCategoryText: { color: '#0F172A', fontWeight: '700' },
 
-  aiHeaderContainer: { paddingHorizontal: 24, marginBottom: 16 },
+  aiHeaderContainer: { paddingHorizontal: 24, marginBottom: 16, marginTop: 10 },
   aiBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F3E8FF', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#D8B4FE' },
   aiBannerText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
   retakeBtn: { backgroundColor: '#FFF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
