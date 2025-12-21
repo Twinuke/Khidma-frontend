@@ -56,18 +56,17 @@ export default function SocialPage() {
   };
 
   useEffect(() => {
-    // ✅ FIX: Guard against undefined userId
-    if (user?.userId) {
-      fetchFeed();
-    }
+    // ✅ FIX: Defensive check for userId
+    if (user?.userId) fetchFeed();
   }, [user?.userId]);
 
   const fetchFeed = async () => {
     try {
       const res = await api.get(`/Social/feed/${user?.userId}`);
-      setPosts(res.data);
+      // ✅ FIX: Ensure res.data is an array
+      setPosts(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
-      console.log("Community Feed Fetch Error:", e);
+      console.log("Feed Error", e);
     } finally {
       setLoading(false);
     }
@@ -75,6 +74,7 @@ export default function SocialPage() {
 
   const handleInteraction = async (postId: number, reaction: string | null) => {
     setReactionPickerId(null);
+
     setPosts((prev) =>
       prev.map((p) => {
         if (p.postId === postId) {
@@ -84,7 +84,7 @@ export default function SocialPage() {
             ...p,
             isLiked: !isRemoving,
             myReaction: isRemoving ? null : reaction,
-            likesCount: isRemoving ? p.likesCount - 1 : wasInteracted ? p.likesCount : p.likesCount + 1,
+            likesCount: isRemoving ? (p.likesCount || 0) - 1 : wasInteracted ? p.likesCount : (p.likesCount || 0) + 1,
           };
         }
         return p;
@@ -94,7 +94,7 @@ export default function SocialPage() {
     try {
       await api.post(`/Social/posts/${postId}/react?userId=${user?.userId}&reaction=${reaction || ""}`);
     } catch (e) {
-      fetchFeed(); // Rollback on error
+      fetchFeed();
     }
   };
 
@@ -109,7 +109,11 @@ export default function SocialPage() {
       setPosts((prev) =>
         prev.map((p) => {
           if (p.postId === activePostId) {
-            return { ...p, comments: [...(p.comments || []), res.data] };
+            return {
+              ...p,
+              // ✅ FIX: Safeguard comments array
+              comments: [...(p.comments || []), res.data],
+            };
           }
           return p;
         })
@@ -122,21 +126,21 @@ export default function SocialPage() {
   };
 
   const renderPost = ({ item }: { item: any }) => {
-    // ✅ SAFETY CHECK: Prevent UI crash if server returns incomplete data
+    // ✅ FIX: Immediate return if item or user is missing to prevent 500 crash
     if (!item || !item.user) return null;
 
     const isJobPosted = item.type === 0;
     const currentEmoji = REACTION_OPTIONS.find((r) => r.type === item.myReaction)?.emoji;
 
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, item.postId === targetPostId && styles.highlightCard]}>
         <View style={styles.headerRow}>
           <Image
             source={{ uri: item.user.profileImageUrl || "https://via.placeholder.com/40" }}
             style={styles.avatar}
           />
           <View>
-            <Text style={styles.username}>{item.user.fullName || "User"}</Text>
+            <Text style={styles.username}>{item.user.fullName || "Unknown User"}</Text>
             <Text style={styles.timestamp}>{formatDateTime(item.createdAt)}</Text>
           </View>
         </View>
@@ -144,19 +148,16 @@ export default function SocialPage() {
         <View style={styles.body}>
           <Text style={styles.text}>
             {isJobPosted ? "posted a new job: " : "had their bid accepted on "}
-            <Text
-              style={styles.linkText}
-              onPress={() => navigation.navigate("JobDetails", { jobId: item.jobId })}
-            >
+            <Text style={styles.linkText} onPress={() => navigation.navigate("JobDetails", { jobId: item.jobId })}>
               {item.jobTitle || "Job Details"}
             </Text>
           </Text>
         </View>
 
         <View style={styles.statsRow}>
-          <Text style={styles.statText}>{item.likesCount || 0} Interactions</Text>
+          <Text style={styles.statText}>{(item.likesCount || 0)} Interactions</Text>
           <TouchableOpacity onPress={() => setActivePostId(item.postId)}>
-            <Text style={styles.statText}>{item.comments?.length || 0} Comments</Text>
+            <Text style={styles.statText}>{(item.comments?.length || 0)} Comments</Text>
           </TouchableOpacity>
         </View>
 
@@ -209,15 +210,15 @@ export default function SocialPage() {
         <FlatList
           ref={flatListRef}
           data={posts}
-          keyExtractor={(item) => item.postId.toString()}
+          keyExtractor={(item) => item.postId?.toString()}
           renderItem={renderPost}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<Text style={styles.emptyTitle}>No posts in your network yet.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyTitle}>No posts yet.</Text>}
         />
       )}
 
       <Modal visible={activePostId !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setActivePostId(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Comments</Text>
             <TouchableOpacity onPress={() => setActivePostId(null)}>
@@ -226,14 +227,17 @@ export default function SocialPage() {
           </View>
           <FlatList
             data={activePost?.comments || []}
-            keyExtractor={(item) => item.commentId.toString()}
-            contentContainerStyle={{ padding: 16 }}
+            keyExtractor={(item) => item.commentId?.toString()}
+            contentContainerStyle={styles.commentsList}
             renderItem={({ item }) => (
               <View style={styles.commentItem}>
                 <Image source={{ uri: item.user?.profileImageUrl || "https://via.placeholder.com/30" }} style={styles.commentAvatar} />
-                <View style={styles.commentBubble}>
-                  <Text style={styles.commentUser}>{item.user?.fullName || "User"}</Text>
-                  <Text style={styles.commentContent}>{item.content}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.commentBubble}>
+                    <Text style={styles.commentUser}>{item.user?.fullName || "User"}</Text>
+                    <Text style={styles.commentContent}>{item.content}</Text>
+                  </View>
+                  <Text style={styles.commentDate}>{formatDateTime(item.createdAt)}</Text>
                 </View>
               </View>
             )}
@@ -252,11 +256,12 @@ export default function SocialPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 50, paddingBottom: 10, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E2E8F0" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 40, paddingBottom: 10, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E2E8F0" },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#0F172A" },
   iconBtn: { padding: 4 },
   list: { padding: 16, paddingBottom: 100 },
-  card: { backgroundColor: "#FFF", borderRadius: 12, padding: 16, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
+  card: { backgroundColor: "#FFF", borderRadius: 12, padding: 16, marginBottom: 12, elevation: 1 },
+  highlightCard: { borderWidth: 2, borderColor: "#2563EB", backgroundColor: "#EFF6FF" },
   headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10, backgroundColor: "#E2E8F0" },
   username: { fontWeight: "700", fontSize: 16, color: "#0F172A" },
@@ -266,10 +271,10 @@ const styles = StyleSheet.create({
   linkText: { color: "#2563EB", fontWeight: "700" },
   statsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12, borderBottomWidth: 1, borderColor: "#F1F5F9", paddingBottom: 8 },
   statText: { fontSize: 12, color: "#64748B" },
-  actions: { flexDirection: "row", justifyContent: "space-around" },
+  actions: { flexDirection: "row", justifyContent: "space-around", position: "relative" },
   actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, padding: 8, minWidth: 100, justifyContent: "center" },
   actionText: { fontSize: 14, fontWeight: "600", color: "#64748B" },
-  reactionPopup: { position: "absolute", bottom: 50, left: 10, flexDirection: "row", backgroundColor: "#FFF", borderRadius: 30, padding: 8, gap: 10, elevation: 5, zIndex: 100 },
+  reactionPopup: { position: "absolute", bottom: 55, left: 20, flexDirection: "row", backgroundColor: "#FFF", borderRadius: 30, padding: 8, gap: 12, elevation: 10, shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, zIndex: 9999 },
   modalContainer: { flex: 1, backgroundColor: "#FFF" },
   modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderColor: "#E2E8F0" },
   modalTitle: { fontSize: 18, fontWeight: "700" },
@@ -279,7 +284,8 @@ const styles = StyleSheet.create({
   commentBubble: { backgroundColor: "#F1F5F9", borderRadius: 12, padding: 10, alignSelf: "flex-start" },
   commentUser: { fontWeight: "700", fontSize: 13, color: "#0F172A", marginBottom: 2 },
   commentContent: { fontSize: 14, color: "#334155" },
+  commentDate: { fontSize: 12, color: "#94A3B8", marginTop: 4, marginLeft: 4 },
   inputContainer: { flexDirection: "row", alignItems: "center", padding: 10, borderTopWidth: 1, borderColor: "#E2E8F0", paddingBottom: Platform.OS === "ios" ? 30 : 10 },
   input: { flex: 1, backgroundColor: "#F8FAFC", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: "#E2E8F0", marginRight: 10, maxHeight: 100 },
-  emptyTitle: { textAlign: "center", marginTop: 50, color: "#94A3B8" },
+  emptyTitle: { textAlign: "center", marginTop: 20, color: "#94A3B8" },
 });
