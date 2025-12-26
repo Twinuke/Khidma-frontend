@@ -21,6 +21,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Alert, // Added Alert
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { JobCard } from "../../components/JobCard";
@@ -66,16 +67,13 @@ export default function Jobs() {
   const [activeFilter, setActiveFilter] = useState<string>("All");
   const [isFilterVisible, setFilterVisible] = useState(false);
 
-  // Refs
-  const flatListRef = useRef<FlatList>(null); // ✅ Added Ref for scrolling
+  const flatListRef = useRef<FlatList>(null);
 
-  // Animations for Modals/Loading
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current; 
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
-  // Magical Button Animations
   const buttonScale = useRef(new Animated.Value(1)).current;
   const iconSpin = useRef(new Animated.Value(0)).current;
   const iconShimmer = useRef(new Animated.Value(1)).current;
@@ -88,7 +86,6 @@ export default function Jobs() {
     }, [activeFilter])
   );
 
-  // START MAGICAL ANIMATIONS
   useEffect(() => {
     Animated.loop(
         Animated.sequence([
@@ -144,6 +141,11 @@ export default function Jobs() {
     }
   };
 
+  /**
+   * ✅ FIXED handleAiMatch
+   * Now calls the dedicated AiJobs recommendation endpoint.
+   * Handles 404 if the user hasn't finished onboarding.
+   */
   const handleAiMatch = async () => {
       if (!user) return;
       
@@ -157,34 +159,32 @@ export default function Jobs() {
       startAiAnimation(); 
 
       try {
-          const profileRes = await api.get(`/Onboarding/${user?.userId}`);
-          const profile = profileRes.data;
+          // Pointing to the correct backend route: /AiJobs/recommended/{userId}
+          const response = await api.get(`/AiJobs/recommended/${user.userId}`);
           
-          let hiddenSearchTerms = "";
-          
-          if (profile) {
-              const skills = profile.selectedSkills ? profile.selectedSkills.split(",") : [];
-              const domains = profile.selectedDomains ? profile.selectedDomains.split(",") : [];
-              
-              const allKeywords = [...domains, ...skills]
-                  .map((s: string) => s.trim())
-                  .filter((s: string) => s.length > 0);
+          // Added a small artificial delay for the "thinking" animation effect
+          await new Promise((r) => setTimeout(r, 2000)); 
 
-              if (allKeywords.length > 0) {
-                  hiddenSearchTerms = allKeywords.join(" "); 
-              }
-          }
+          const data = Array.isArray(response.data) ? response.data : [];
+          setJobs(data);
 
-          await new Promise((r) => setTimeout(r, 2500)); 
-
-          if (hiddenSearchTerms) {
-              await fetchJobs(hiddenSearchTerms);
-          } else {
-              await fetchJobs("Development"); 
-          }
-
-      } catch (error) {
+      } catch (error: any) {
           console.error("AI Fetch Error", error);
+          
+          // If profile is not found (404), prompt user to setup their skills
+          if (error.response?.status === 404) {
+              Alert.alert(
+                  "AI Profile Incomplete",
+                  "We need to know your skills to find matches. Would you like to set up your AI profile now?",
+                  [
+                      { text: "Maybe Later", style: "cancel", onPress: () => setIsAiActive(false) },
+                      { text: "Let's Go", onPress: () => navigation.navigate("OnboardingScreen") }
+                  ]
+              );
+          } else {
+              Alert.alert("Error", "Could not fetch AI recommendations at this time.");
+              setIsAiActive(false);
+          }
           setJobs([]);
       } finally {
           setAiThinking(false);
@@ -212,12 +212,10 @@ export default function Jobs() {
     ).start();
   };
 
-  // --- Scrolling ---
   const scrollToTop = () => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   };
 
-  // --- Modal Logic ---
   const openModal = () => {
     Keyboard.dismiss();
     setFilterVisible(true);
@@ -264,7 +262,6 @@ export default function Jobs() {
     },
   }), [slideAnim]);
 
-  // --- Render Header ---
   const renderHeaderComponent = () => (
     <View style={styles.headerContainer}>
       <LinearGradient
@@ -275,26 +272,22 @@ export default function Jobs() {
       >
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
-            {/* ✅ Back Button */}
             <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
                 <Ionicons name="arrow-back" size={22} color="#FFF" />
             </TouchableOpacity>
             
-            {/* ✅ Professional Title */}
             <TouchableOpacity activeOpacity={0.8} onPress={scrollToTop}>
                 <Text style={styles.greeting}>Job Market</Text>
                 <Text style={styles.subGreeting}>Explore premium opportunities</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Notification Button */}
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.navigate("Notifications")}>
             <Ionicons name="notifications-outline" size={22} color="#FFF" />
             <View style={styles.redDot} />
           </TouchableOpacity>
         </View>
 
-        {/* Search Row */}
         <View style={styles.searchRow}>
             <View style={styles.searchContainer}>
                 <Ionicons name="search" size={20} color="#94A3B8" style={{ marginRight: 10 }} />
@@ -317,7 +310,6 @@ export default function Jobs() {
                 )}
             </View>
 
-            {/* Magical AI Button */}
             <TouchableOpacity 
                 onPress={handleAiMatch}
                 disabled={aiThinking}
@@ -342,7 +334,6 @@ export default function Jobs() {
             </TouchableOpacity>
         </View>
 
-        {/* Categories Pills */}
         <FlatList
           data={FILTERS}
           horizontal
@@ -379,7 +370,6 @@ export default function Jobs() {
       <View style={{ zIndex: 10 }}>
         {renderHeaderComponent()}
         
-        {/* AI Banner */}
         {!aiThinking && isAiActive && jobs.length > 0 && (
             <View style={styles.aiHeaderContainer}>
                 <View style={styles.aiBanner}>
@@ -420,7 +410,6 @@ export default function Jobs() {
           refreshing={refreshing}
           ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
           ListEmptyComponent={
-            // AI LOADING SCREEN
             aiThinking ? (
               <View style={styles.aiLoadingContainer}>
                 <View style={styles.aiOrbContainer}>
@@ -455,7 +444,6 @@ export default function Jobs() {
         />
       </KeyboardAvoidingView>
 
-      {/* Filter Modal */}
       <Modal visible={isFilterVisible} transparent animationType="none" onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback onPress={closeModal}><Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} /></TouchableWithoutFeedback>
@@ -493,62 +481,36 @@ export default function Jobs() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  
-  // Header
-  headerContainer: {
-    backgroundColor: '#F8FAFC',
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    overflow: 'hidden',
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    zIndex: 100
-  },
+  headerContainer: { backgroundColor: '#F8FAFC', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden', shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, zIndex: 100 },
   gradientHeader: { paddingBottom: 24, paddingHorizontal: 20 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  
   greeting: { fontSize: 20, fontWeight: '700', color: '#FFF' },
   subGreeting: { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  
   iconBtn: { width: 44, height: 44, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   redDot: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444', borderWidth: 1, borderColor: '#1E293B' },
-
-  // Search Row
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
   searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, paddingHorizontal: 16, height: 52 },
   searchInput: { flex: 1, height: '100%', fontSize: 15, color: '#0F172A' },
-  clearBtn: { padding: 4 },
-  
-  // AI Button
   aiButton: { width: 52, height: 52, borderRadius: 16, overflow: 'hidden', shadowColor: "#7C3AED", shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
   aiGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-  // Categories
   categoriesList: { gap: 10, paddingRight: 20 },
   categoryPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', marginRight: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   activeCategoryPill: { backgroundColor: '#FFF', borderColor: '#FFF' },
   categoryText: { color: 'rgba(255,255,255,0.8)', fontWeight: '600', fontSize: 13 },
   activeCategoryText: { color: '#0F172A', fontWeight: '700' },
-
   aiHeaderContainer: { paddingHorizontal: 24, marginBottom: 16, marginTop: 10 },
   aiBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F3E8FF', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#D8B4FE' },
   aiBannerText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
   retakeBtn: { backgroundColor: '#FFF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
   retakeText: { fontSize: 12, fontWeight: '700', color: COLORS.accent },
-
   listContent: { paddingHorizontal: 24, paddingBottom: 100 },
-  
-  // --- AI LOADER STYLES ---
   aiLoadingContainer: { alignItems: "center", marginTop: 60 },
   aiOrbContainer: { width: 100, height: 100, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   aiRing: { position: 'absolute', width: 100, height: 100, borderRadius: 50, borderWidth: 4, borderColor: '#E9D5FF', borderTopColor: COLORS.accent, opacity: 0.8 },
   aiCore: { width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.accent, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 },
   aiTitle: { fontSize: 20, fontWeight: "800", color: COLORS.text },
   aiSub: { fontSize: 14, color: COLORS.subtext, marginTop: 6 },
-
   loaderBox: { alignItems: "center", paddingTop: 60 },
   emptyState: { alignItems: "center", paddingTop: 60, paddingHorizontal: 30 },
   emptyIcon: { width: 70, height: 70, borderRadius: 35, backgroundColor: "#F1F5F9", alignItems: "center", justifyContent: "center", marginBottom: 16 },
@@ -556,8 +518,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 15, color: COLORS.subtext, textAlign: "center", marginTop: 8, lineHeight: 22 },
   primaryCta: { marginTop: 24, backgroundColor: COLORS.text, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 30 },
   primaryCtaText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-
-  // Modal
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.backdrop },
   sheet: { backgroundColor: COLORS.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 12, maxHeight: "85%" },
@@ -565,13 +525,11 @@ const styles = StyleSheet.create({
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#CBD5E1" },
   sheetTitle: { fontSize: 24, fontWeight: "800", color: COLORS.text, marginBottom: 20 },
   sectionLabel: { fontSize: 12, fontWeight: "800", color: COLORS.subtext, textTransform: "uppercase", marginBottom: 12, marginTop: 10 },
-  
   smartRow: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 20, backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border, marginBottom: 20 },
   smartRowActive: { backgroundColor: "#F3E8FF", borderColor: COLORS.accent },
   smartIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: COLORS.accent },
   smartTitle: { fontSize: 16, fontWeight: "800", color: COLORS.text },
   smartSub: { fontSize: 13, color: COLORS.subtext },
-  
   chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   chip: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border },
   chipActive: { backgroundColor: COLORS.text, borderColor: COLORS.text },

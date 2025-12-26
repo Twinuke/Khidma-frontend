@@ -1,17 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { ScreenWrapper } from "../components/ScreenWrapper";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
@@ -51,7 +52,6 @@ export default function Bids() {
 
   const fetchBids = async () => {
     if (!user) return;
-
     setLoading(true);
     try {
       const endpoint = isClient
@@ -89,14 +89,10 @@ export default function Bids() {
 
   const getStatusMeta = (status: number) => {
     switch (status) {
-      case 0:
-        return { bg: "#FEF3C7", text: "#D97706", label: "Pending" };
-      case 1:
-        return { bg: "#DCFCE7", text: "#16A34A", label: "Accepted" };
-      case 2:
-        return { bg: "#FEE2E2", text: "#DC2626", label: "Rejected" };
-      default:
-        return { bg: "#F3F4F6", text: "#4B5563", label: "Unknown" };
+      case 0: return { bg: "#FEF3C7", text: "#D97706", label: "Pending" };
+      case 1: return { bg: "#DCFCE7", text: "#16A34A", label: "Accepted" };
+      case 2: return { bg: "#FEE2E2", text: "#DC2626", label: "Rejected" };
+      default: return { bg: "#F1F5F9", text: "#64748B", label: "Unknown" };
     }
   };
 
@@ -127,99 +123,83 @@ export default function Bids() {
     return (
       <TouchableOpacity
         style={styles.card}
-        activeOpacity={0.7}
+        activeOpacity={0.8}
         onPress={() => handleBidPress(item)}
       >
-        <View style={styles.headerRow}>
-          <Text style={styles.jobTitle} numberOfLines={1}>
-            {mainTitle}
-          </Text>
-          <View style={[styles.badge, { backgroundColor: meta.bg }]}>
-            <Text style={[styles.badgeText, { color: meta.text }]}>
-              {meta.label}
-            </Text>
+        <View style={styles.cardHeader}>
+          <Text style={styles.jobTitle} numberOfLines={1}>{mainTitle}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+            <Text style={[styles.statusBadgeText, { color: meta.text }]}>{meta.label}</Text>
           </View>
         </View>
 
-        <Text style={styles.clientName}>
-          {secondaryLabel}: {secondary}
-        </Text>
+        <View style={styles.personRow}>
+          <Ionicons name={isClient ? "person" : "business"} size={14} color="#64748B" />
+          <Text style={styles.personText}>{secondaryLabel}: {secondary}</Text>
+        </View>
 
-        <Text style={styles.proposal} numberOfLines={2}>
+        <Text style={styles.proposalText} numberOfLines={2}>
           {item.proposalText}
         </Text>
 
-        <View style={styles.footer}>
-          <Text style={styles.amount}>${item.bidAmount.toFixed(2)}</Text>
-          <Text style={styles.footerText}>
-            {item.deliveryTimeDays} days •{" "}
-            {new Date(item.createdAt).toLocaleDateString()}
-          </Text>
-          <TouchableOpacity style={styles.arrowBtn}>
-            <Ionicons name="chevron-forward" size={18} color="#64748B" />
-          </TouchableOpacity>
+        <View style={styles.cardFooter}>
+          <View>
+            <Text style={styles.amountLabel}>Bid Amount</Text>
+            <Text style={styles.amountValue}>${item.bidAmount.toFixed(2)}</Text>
+          </View>
+          <View style={styles.timeInfo}>
+            <View style={styles.infoTag}>
+              <Ionicons name="time-outline" size={12} color="#64748B" />
+              <Text style={styles.infoTagText}>{item.deliveryTimeDays} days</Text>
+            </View>
+            <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <ScreenWrapper scrollable={false} style={styles.container}>
-      {/* ✅ Standardized Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.iconBtn}
-          >
-            <Ionicons name="arrow-back" size={24} color="#0F172A" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Premium Gradient Header */}
+      <LinearGradient colors={["#0F172A", "#1E293B"]} style={styles.header}>
+        <View style={styles.headerNav}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>{isClient ? "Client Dashboard" : "My Bids"}</Text>
+            <Text style={styles.headerSubtitle}>
+              {isClient ? "Manage offers on your jobs" : "Track your active proposals"}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.headerTitle}>
-          {isClient ? "Bids on My Jobs" : "My Bids"}
-        </Text>
-        <View style={styles.headerRight} />
-      </View>
+      </LinearGradient>
 
       {isClient && jobsForFilter.length > 0 && (
-        <View style={{ height: 50 }}>
+        <View style={styles.filterBarContainer}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.filterBar}
-            contentContainerStyle={styles.filterContent}
+            contentContainerStyle={styles.filterScroll}
           >
             <TouchableOpacity
-              style={[
-                styles.filterChip,
-                !selectedJobId && styles.filterChipActive,
-              ]}
+              style={[styles.filterChip, !selectedJobId && styles.filterChipActive]}
               onPress={() => setSelectedJobId(null)}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  !selectedJobId && styles.filterChipTextActive,
-                ]}
-              >
-                All
-              </Text>
+              <Text style={[styles.filterChipText, !selectedJobId && styles.filterChipTextActive]}>All Jobs</Text>
             </TouchableOpacity>
 
             {jobsForFilter.map((job) => (
               <TouchableOpacity
                 key={job.jobId}
-                style={[
-                  styles.filterChip,
-                  selectedJobId === job.jobId && styles.filterChipActive,
-                ]}
+                style={[styles.filterChip, selectedJobId === job.jobId && styles.filterChipActive]}
                 onPress={() => setSelectedJobId(job.jobId)}
               >
                 <Text
-                  style={[
-                    styles.filterChipText,
-                    selectedJobId === job.jobId && styles.filterChipTextActive,
-                  ]}
+                  style={[styles.filterChipText, selectedJobId === job.jobId && styles.filterChipTextActive]}
                   numberOfLines={1}
                 >
                   {job.title}
@@ -231,7 +211,7 @@ export default function Bids() {
       )}
 
       {loading ? (
-        <View style={styles.loading}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2563EB" />
         </View>
       ) : (
@@ -239,108 +219,131 @@ export default function Bids() {
           data={filteredBids}
           keyExtractor={(item) => item.bidId.toString()}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="document-text-outline" size={40} color="#94A3B8" />
+              </View>
               <Text style={styles.emptyText}>
                 {isClient
-                  ? "No bids on your jobs yet."
+                  ? "No bids received yet."
                   : "You haven't placed any bids yet."}
+              </Text>
+              <Text style={styles.emptySubtext}>
+                {isClient ? "Your job posts will appear here once freelancers bid." : "Go to the Jobs tab to find opportunities!"}
               </Text>
             </View>
           }
         />
       )}
-    </ScreenWrapper>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-
-  // ✅ Standard Header
+  
+  // Header Styles (Matching Profile/Updates)
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    paddingTop: 50,
+    paddingBottom: 20,
     paddingHorizontal: 20,
-    paddingTop: 40,
-    paddingBottom: 10,
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
-  headerLeft: { flex: 1, alignItems: "flex-start" },
-  headerTitle: {
-    flex: 2,
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0F172A",
-    textAlign: "center",
-  },
-  headerRight: { flex: 1, alignItems: "flex-end" },
-  iconBtn: { padding: 4 },
+  headerNav: { flexDirection: "row", alignItems: "center" },
+  backBtn: { padding: 8, marginRight: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 12 },
+  headerContent: { flex: 1 },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: "#FFF" },
+  headerSubtitle: { fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 2 },
 
-  filterBar: { backgroundColor: "#F8FAFC" },
-  filterContent: { paddingHorizontal: 12, paddingVertical: 8 },
+  // Filter Bar Styles
+  filterBarContainer: { marginTop: 10 },
+  filterScroll: { paddingHorizontal: 20, paddingVertical: 10, gap: 10 },
   filterChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
     borderWidth: 1,
-    borderColor: "#CBD5F5",
-    backgroundColor: "#EFF6FF",
-    marginRight: 8,
+    borderColor: "#E2E8F0",
   },
   filterChipActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
-  filterChipText: { fontSize: 13, color: "#1E293B" },
-  filterChipTextActive: { color: "#FFFFFF", fontWeight: "700" },
+  filterChipText: { fontSize: 13, fontWeight: "600", color: "#64748B" },
+  filterChipTextActive: { color: "#FFF" },
 
-  loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { padding: 16 },
+  // List & Card Styles (Matching Profile Section Aesthetic)
+  listContainer: { padding: 20, paddingBottom: 40 },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: {
     backgroundColor: "#FFF",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 3,
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
-  headerRow: {
+  cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  jobTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
-    flex: 1,
-    marginRight: 8,
-  },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { fontSize: 11, fontWeight: "700" },
-  clientName: { fontSize: 13, color: "#64748B", marginBottom: 8 },
-  proposal: { fontSize: 13, color: "#475569", marginBottom: 10 },
-  footer: {
+  jobTitle: { fontSize: 17, fontWeight: "700", color: "#0F172A", flex: 1, marginRight: 10 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusBadgeText: { fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
+  
+  personRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 },
+  personText: { fontSize: 13, color: "#64748B", fontWeight: "500" },
+  
+  proposalText: { fontSize: 14, color: "#475569", lineHeight: 20, marginBottom: 16 },
+  
+  cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 10,
+    alignItems: "flex-end",
+    paddingTop: 16,
     borderTopWidth: 1,
-    borderColor: "#F1F5F9",
+    borderTopColor: "#F1F5F9",
   },
-  amount: { fontSize: 18, fontWeight: "700", color: "#2563EB" },
-  footerText: { fontSize: 12, color: "#6B7280" },
-  arrowBtn: { padding: 4 },
-  emptyContainer: { alignItems: "center", marginTop: 60 },
-  emptyText: { color: "#64748B", marginTop: 12, fontSize: 16 },
+  amountLabel: { fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase", marginBottom: 2 },
+  amountValue: { fontSize: 20, fontWeight: "800", color: "#2563EB" },
+  
+  timeInfo: { alignItems: "flex-end" },
+  infoTag: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 4, 
+    backgroundColor: "#F8FAFC", 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 6,
+    marginBottom: 4 
+  },
+  infoTagText: { fontSize: 12, fontWeight: "600", color: "#475569" },
+  dateText: { fontSize: 11, color: "#94A3B8" },
+
+  // Empty State Styles
+  emptyContainer: { alignItems: "center", marginTop: 60, paddingHorizontal: 40 },
+  emptyIconCircle: { 
+    width: 80, 
+    height: 80, 
+    borderRadius: 40, 
+    backgroundColor: "#F1F5F9", 
+    justifyContent: "center", 
+    alignItems: "center",
+    marginBottom: 20 
+  },
+  emptyText: { fontSize: 18, fontWeight: "700", color: "#334155", textAlign: "center" },
+  emptySubtext: { fontSize: 14, color: "#94A3B8", textAlign: "center", marginTop: 8, lineHeight: 20 },
 });
