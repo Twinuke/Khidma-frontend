@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"; // ✅ Import this
+import AsyncStorage from "@react-native-async-storage/async-storage"; 
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -16,21 +16,31 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Dimensions,
+  Keyboard,
 } from "react-native";
 import { RootStackParamList } from "../../App";
 import api from "../config/api";
 import { useUser } from "../context/UserContext";
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const HEADER_MIN_HEIGHT = Platform.OS === "ios" ? 100 : 90;
 const HEADER_MAX_HEIGHT = 280;
 
 const COLORS = {
   bg: "#F1F5F9",
   primary: "#2563EB",
-  dark: "#0F172A",
+  primaryDark: "#1E4ED8",
+  dark: "#0F172A", 
+  darkLight: "#1E293B",
   white: "#FFFFFF",
   secondaryText: "#94A3B8",
   success: "#10B981",
+  border: "rgba(255,255,255,0.08)",
 };
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -41,10 +51,17 @@ export default function Home() {
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // --- SHEET & KEYBOARD ---
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalType, setModalType] = useState<"Add" | "Withdraw">("Add");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  const sheetY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const headerHeight = useRef(new Animated.Value(HEADER_MIN_HEIGHT)).current;
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // ✅ NEW: Check for onboarding requirement
   useEffect(() => {
     checkOnboarding();
   }, []);
@@ -52,9 +69,7 @@ export default function Home() {
   const checkOnboarding = async () => {
     const isNew = await AsyncStorage.getItem("isNewFreelancer");
     if (isNew === "true") {
-      // Clear flag so it doesn't show next time
       await AsyncStorage.removeItem("isNewFreelancer");
-      // Redirect to the new screen
       navigation.navigate("OnboardingScreen"); 
     }
   };
@@ -78,35 +93,96 @@ export default function Home() {
     }
   };
 
-  const handleWithdraw = () => {
-    Alert.alert("Withdraw", "Withdrawal feature is coming soon!");
+  // --- SHEET ANIMATIONS ---
+  const openSheet = (type: "Add" | "Withdraw") => {
+    setModalType(type);
+    setAmount("");
+    setModalVisible(true);
+    Animated.spring(sheetY, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 60,
+      friction: 10
+    }).start(() => {
+        setTimeout(() => inputRef.current?.focus(), 150);
+    });
   };
 
-  const panResponder = useRef(
+  const closeSheet = () => {
+    Keyboard.dismiss();
+    Animated.timing(sheetY, {
+      toValue: SCREEN_HEIGHT,
+      duration: 300,
+      useNativeDriver: true
+    }).start(() => setModalVisible(false));
+  };
+
+  // FIXED: Robust PanResponder for 1:1 finger tracking
+  const panResponderSheet = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 5,
-      onPanResponderMove: (_, gestureState) => {
-        let newHeight =
-          (isExpanded ? HEADER_MAX_HEIGHT : HEADER_MIN_HEIGHT) +
-          gestureState.dy;
-        if (newHeight < HEADER_MIN_HEIGHT) newHeight = HEADER_MIN_HEIGHT;
-        if (newHeight > HEADER_MAX_HEIGHT + 30)
-          newHeight = HEADER_MAX_HEIGHT + 30;
-        headerHeight.setValue(newHeight);
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
+      onPanResponderMove: (_, gs) => {
+        // Only allow dragging downwards (positive dy)
+        if (gs.dy > 0) {
+          sheetY.setValue(gs.dy);
+        }
       },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 50 || (isExpanded && gestureState.dy > -50)) {
-          Animated.spring(headerHeight, {
-            toValue: HEADER_MAX_HEIGHT,
-            useNativeDriver: false,
+      onPanResponderRelease: (_, gs) => {
+        // If dragged down more than 120px or swiped fast, close it
+        if (gs.dy > 120 || gs.vy > 0.5) {
+          closeSheet();
+        } else {
+          // Otherwise, snap back to the top
+          Animated.spring(sheetY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 10
           }).start();
+        }
+      },
+    })
+  ).current;
+
+  const handleTransaction = async () => {
+    const numAmount = parseFloat(amount);
+    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+      Alert.alert("Invalid Amount", "Please enter a valid amount.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (modalType === "Add") {
+        const response = await api.post("/Payments/create-checkout-session", { amount: numAmount });
+        if (response.data.url) await Linking.openURL(response.data.url);
+      } else {
+        Alert.alert("Request Sent", `Your withdrawal of $${numAmount.toFixed(2)} is being processed.`);
+      }
+      closeSheet();
+    } catch (error) {
+      Alert.alert("Transaction Failed", "Could not connect to service.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const panResponderHeader = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5,
+      onPanResponderMove: (_, gs) => {
+        let newH = (isExpanded ? HEADER_MAX_HEIGHT : HEADER_MIN_HEIGHT) + gs.dy;
+        if (newH < HEADER_MIN_HEIGHT) newH = HEADER_MIN_HEIGHT;
+        if (newH > HEADER_MAX_HEIGHT + 30) newH = HEADER_MAX_HEIGHT + 30;
+        headerHeight.setValue(newH);
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 50 || (isExpanded && gs.dy > -50)) {
+          Animated.spring(headerHeight, { toValue: HEADER_MAX_HEIGHT, useNativeDriver: false }).start();
           setIsExpanded(true);
         } else {
-          Animated.spring(headerHeight, {
-            toValue: HEADER_MIN_HEIGHT,
-            useNativeDriver: false,
-          }).start();
+          Animated.spring(headerHeight, { toValue: HEADER_MIN_HEIGHT, useNativeDriver: false }).start();
           setIsExpanded(false);
         }
       },
@@ -119,222 +195,216 @@ export default function Home() {
     extrapolate: "clamp",
   });
 
-  const handleJobsPress = () => {
-    if (user?.userType === 1) {
-      navigation.navigate("ClientMyJobs");
-    } else {
-      navigation.navigate("Jobs");
-    }
-  };
-
   return (
     <View style={styles.mainContainer}>
-      <StatusBar
-        barStyle="light-content"
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* --- PREMIUM DRAGGABLE KHIDMA SHEET --- */}
+      <Modal visible={modalVisible} transparent animationType="none">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : "height"} 
+          style={styles.sheetOverlay}
+        >
+          {/* Backdrop Touch to Close */}
+          <TouchableOpacity 
+            style={styles.backdrop} 
+            activeOpacity={1} 
+            onPress={closeSheet} 
+          />
+          
+          <Animated.View 
+            style={[styles.sheetContent, { transform: [{ translateY: sheetY }] }]}
+            {...panResponderSheet.panHandlers}
+          >
+            <LinearGradient colors={[COLORS.dark, "#1E293B"]} style={styles.sheetGradient}>
+              {/* Draggable Handle */}
+              <View style={styles.sheetHandle} />
+
+              <View style={styles.sheetHeader}>
+                <View>
+                  <Text style={styles.sheetTitle}>{modalType === "Add" ? "Add Funds" : "Withdraw"}</Text>
+                  <Text style={styles.sheetBalance}>Wallet: ${user?.balance?.toFixed(2)}</Text>
+                </View>
+                <View style={styles.secureBadge}>
+                  <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
+                  <Text style={styles.secureText}>Secure</Text>
+                </View>
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Text style={styles.currency}>$</Text>
+                <TextInput
+                  ref={inputRef}
+                  style={styles.sheetInput}
+                  placeholder="0.00"
+                  placeholderTextColor="rgba(255,255,255,0.15)"
+                  keyboardType="decimal-pad"
+                  value={amount}
+                  onChangeText={setAmount}
+                />
+              </View>
+
+              {/* QUICK PICK CHIPS */}
+              <View style={styles.chipContainer}>
+                {["20", "50", "100", "250"].map((val) => (
+                  <TouchableOpacity 
+                    key={val} 
+                    style={styles.amountChip} 
+                    onPress={() => setAmount(val)}
+                  >
+                    <Text style={styles.chipText}>+${val}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* SUMMARY SECTION TO FILL SPACE */}
+              <View style={styles.summaryBox}>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Transaction Fee</Text>
+                  <Text style={styles.summaryValue}>$0.00</Text>
+                </View>
+                <View style={[styles.summaryRow, { marginTop: 8 }]}>
+                  <Text style={[styles.summaryLabel, { color: "#FFF" }]}>Total amount</Text>
+                  <Text style={[styles.summaryValue, { color: COLORS.primary, fontWeight: "bold" }]}>
+                    ${amount ? parseFloat(amount).toFixed(2) : "0.00"}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity 
+                style={styles.sheetActionBtn} 
+                onPress={handleTransaction}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[COLORS.primary, COLORS.primaryDark]}
+                  style={styles.btnGradient}
+                >
+                  <Text style={styles.btnText}>
+                    {loading ? "Authenticating..." : `Confirm ${modalType}`}
+                  </Text>
+                  <Ionicons name="arrow-forward" size={18} color="#FFF" style={{ marginLeft: 8 }} />
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <View style={{ height: 30 }} />
+            </LinearGradient>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* HEADER */}
-      <Animated.View
-        style={[styles.headerContainer, { height: headerHeight }]}
-        {...panResponder.panHandlers}
-      >
-        <LinearGradient
-          colors={["#0F172A", "#1E293B"]}
-          style={styles.headerGradient}
-        >
+      <Animated.View style={[styles.headerContainer, { height: headerHeight }]} {...panResponderHeader.panHandlers}>
+        <LinearGradient colors={[COLORS.dark, COLORS.darkLight]} style={styles.headerGradient}>
           <View style={styles.compactRow}>
-            <TouchableOpacity
-              style={styles.userInfo}
-              onPress={() => navigation.navigate("Profile")}
-            >
+            <TouchableOpacity style={styles.userInfo} onPress={() => navigation.navigate("Profile")}>
               <View style={styles.avatarContainer}>
                 {user?.profileImageUrl ? (
-                  <Image
-                    source={{ uri: user.profileImageUrl }}
-                    style={styles.headerAvatarImage}
-                  />
+                  <Image source={{ uri: user.profileImageUrl }} style={styles.headerAvatarImage} />
                 ) : (
                   <Ionicons name="person" size={20} color="#FFF" />
                 )}
                 <View style={styles.onlineDot} />
               </View>
               <View>
-                <Text style={styles.greetingText}>
-                  Hello, {user?.fullName?.split(" ")[0]}
-                </Text>
-                <Text style={styles.statusText}>
-                  <Ionicons name="location-outline" size={10} />{" "}
-                  {user?.city || "No Location"}
-                </Text>
+                <Text style={styles.greetingText}>Hello, {user?.fullName?.split(" ")[0]}</Text>
+                <Text style={styles.statusText}><Ionicons name="location-outline" size={10} /> {user?.city || "No Location"}</Text>
               </View>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate("Notifications")}
-            >
+            <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate("Notifications")}>
               <Ionicons name="notifications-outline" size={20} color="#FFF" />
               {unreadCount > 0 && (
                 <View style={styles.notifBadge}>
-                  <Text style={styles.notifText}>
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </Text>
+                  <Text style={styles.notifText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
           </View>
-
-          <Animated.View
-            style={[styles.expandedContent, { opacity: detailsOpacity }]}
-            pointerEvents={isExpanded ? "auto" : "none"}
-          >
+          
+          <Animated.View style={[styles.expandedContent, { opacity: detailsOpacity }]} pointerEvents={isExpanded ? "auto" : "none"}>
             <View style={styles.divider} />
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Success</Text>
-                <Text style={styles.statValue}>98%</Text>
-              </View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>Success</Text><Text style={styles.statValue}>98%</Text></View>
               <View style={styles.verticalLine} />
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Balance</Text>
-                <Text style={styles.statValue}>
-                  ${user?.balance?.toFixed(2)}
-                </Text>
-              </View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>Balance</Text><Text style={styles.statValue}>${user?.balance?.toFixed(2)}</Text></View>
               <View style={styles.verticalLine} />
-              <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Rating</Text>
-                <Text style={styles.statValue}>4.9 ★</Text>
-              </View>
+              <View style={styles.statItem}><Text style={styles.statLabel}>Rating</Text><Text style={styles.statValue}>4.9 ★</Text></View>
             </View>
-
-            <TouchableOpacity
-              style={styles.expButton}
-              onPress={() => navigation.navigate("Profile")}
-            >
+            <TouchableOpacity style={styles.expButton} onPress={() => navigation.navigate("Profile")}>
               <Ionicons name="person-circle-outline" size={20} color="#FFF" />
               <Text style={styles.expButtonText}>Edit Profile</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.expButton, styles.logoutBtn]}
-              onPress={logout}
-            >
+            <TouchableOpacity style={[styles.expButton, styles.logoutBtn]} onPress={logout}>
               <Ionicons name="log-out-outline" size={20} color="#FCA5A5" />
               <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </Animated.View>
-
-          <View style={styles.dragHandle}>
-            <Ionicons
-              name="chevron-down"
-              size={20}
-              color="rgba(255,255,255,0.3)"
-            />
-          </View>
+          <View style={styles.dragHandle}><Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.3)" /></View>
         </LinearGradient>
       </Animated.View>
 
-      {/* CONTENT */}
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: HEADER_MIN_HEIGHT + 20 },
-        ]}
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={[styles.scrollContent, { paddingTop: HEADER_MIN_HEIGHT + 20 }]}
       >
-        {/* BALANCE CARD */}
-        <LinearGradient
-          colors={["#2563EB", "#1D4ED8"]}
-          style={styles.balanceCard}
-          start={{ x: 0, y: 0 }}
+        <LinearGradient 
+          colors={[COLORS.primary, COLORS.primaryDark]} 
+          style={styles.balanceCard} 
+          start={{ x: 0, y: 0 }} 
           end={{ x: 1, y: 1 }}
         >
           <View>
             <Text style={styles.balanceLabel}>Total Balance</Text>
-            <Text style={styles.balanceAmount}>
-              ${user?.balance?.toFixed(2) || "0.00"}
-            </Text>
+            <Text style={styles.balanceAmount}>${user?.balance?.toFixed(2) || "0.00"}</Text>
           </View>
-          <TouchableOpacity style={styles.withdrawBtn} onPress={handleWithdraw}>
-            <Text style={styles.withdrawText}>Withdraw</Text>
-            <Ionicons
-              name="arrow-forward-circle"
-              size={20}
-              color={COLORS.primary}
-            />
-          </TouchableOpacity>
+          <View style={styles.balanceActions}>
+            {user?.userType === 1 && (
+              <TouchableOpacity style={styles.miniActionBtn} onPress={() => openSheet("Add")}>
+                <Ionicons name="add-circle" size={16} color={COLORS.primary} />
+                <Text style={styles.miniActionText}>Add</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity 
+              style={[styles.miniActionBtn, { backgroundColor: "rgba(255,255,255,0.2)" }]} 
+              onPress={() => openSheet("Withdraw")}
+            >
+              <Ionicons name="arrow-up-circle" size={16} color="#FFF" />
+              <Text style={[styles.miniActionText, { color: "#FFF" }]}>Withdraw</Text>
+            </TouchableOpacity>
+          </View>
         </LinearGradient>
 
-        {/* Overview Grid */}
         <Text style={styles.sectionTitle}>Overview</Text>
         <View style={styles.gridContainer}>
-          <TouchableOpacity style={styles.gridItem} onPress={handleJobsPress}>
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate(user?.userType === 1 ? "ClientMyJobs" : "Jobs")}>
             <View style={[styles.gridIcon, { backgroundColor: "#DBEAFE" }]}>
-              <Ionicons
-                name={user?.userType === 1 ? "briefcase" : "search"}
-                size={22}
-                color={COLORS.primary}
-              />
+              <Ionicons name={user?.userType === 1 ? "briefcase" : "search"} size={22} color={COLORS.primary} />
             </View>
-            <Text style={styles.gridLabel}>
-              {user?.userType === 1 ? "My Jobs" : "Find Jobs"}
-            </Text>
+            <Text style={styles.gridLabel}>{user?.userType === 1 ? "My Jobs" : "Find Jobs"}</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.gridItem}
-            onPress={() => navigation.navigate("SocialPage")}
-          >
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate("SocialPage")}>
             <View style={[styles.gridIcon, { backgroundColor: "#DCFCE7" }]}>
               <Ionicons name="people" size={22} color={COLORS.success} />
             </View>
             <Text style={styles.gridLabel}>Community</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.gridItem}
-            onPress={() => navigation.navigate("Messages")}
-          >
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate("Messages")}>
             <View style={[styles.gridIcon, { backgroundColor: "#FEF3C7" }]}>
               <Ionicons name="chatbubbles" size={22} color="#D97706" />
             </View>
             <Text style={styles.gridLabel}>Chat</Text>
           </TouchableOpacity>
-
-          {user?.userType === 1 ? (
-            <TouchableOpacity
-              style={styles.gridItem}
-              onPress={() => navigation.navigate("ClientWorkUpdates" as any)}
-            >
-              <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
-                <Ionicons name="clipboard-outline" size={22} color="#9333EA" />
-              </View>
-              <Text style={styles.gridLabel}>Work Updates</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.gridItem}
-              onPress={() => navigation.navigate("Bids" as any)}
-            >
-              <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
-                <Ionicons name="document-text" size={22} color="#9333EA" />
-              </View>
-              <Text style={styles.gridLabel}>Bids</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.gridItem} onPress={() => navigation.navigate(user?.userType === 1 ? "ClientWorkUpdates" : "Bids" as any)}>
+            <View style={[styles.gridIcon, { backgroundColor: "#F3E8FF" }]}>
+              <Ionicons name={user?.userType === 1 ? "clipboard-outline" : "document-text"} size={22} color="#9333EA" />
+            </View>
+            <Text style={styles.gridLabel}>{user?.userType === 1 ? "Work" : "Bids"}</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Activity Feed */}
         <View style={styles.recentHeader}>
           <Text style={styles.sectionTitle}>Recent Activity</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("Notifications")}
-          >
-            <Text style={styles.seeAll}>See All</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate("Notifications")}><Text style={styles.seeAll}>See All</Text></TouchableOpacity>
         </View>
         {recentActivity.map((item) => (
           <View key={item.notificationId} style={styles.activityItem}>
@@ -348,16 +418,9 @@ export default function Home() {
         <View style={{ height: 80 }} />
       </ScrollView>
 
-      {/* FAB */}
       {user?.userType === 1 && (
-        <TouchableOpacity
-          style={styles.floatingFab}
-          onPress={() => navigation.navigate("CreateJob")}
-        >
-          <LinearGradient
-            colors={["#2563EB", "#3B82F6"]}
-            style={styles.fabGradient}
-          >
+        <TouchableOpacity style={styles.floatingFab} onPress={() => navigation.navigate("CreateJob")}>
+          <LinearGradient colors={[COLORS.primary, "#3B82F6"]} style={styles.fabGradient}>
             <Ionicons name="add" size={32} color="#FFF" />
           </LinearGradient>
         </TouchableOpacity>
@@ -368,196 +431,90 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   mainContainer: { flex: 1, backgroundColor: COLORS.bg },
-  headerContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    elevation: 10,
-    overflow: "hidden",
+  // KHIDMA SHEET STYLES
+  sheetOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.75)", justifyContent: "flex-end" },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  sheetContent: { 
+    height: 520, 
+    borderTopLeftRadius: 32, 
+    borderTopRightRadius: 32, 
+    overflow: "hidden", 
+    backgroundColor: COLORS.dark,
+    elevation: 20
   },
-  headerGradient: {
-    flex: 1,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    paddingTop: Platform.OS === "android" ? 40 : 50,
-    paddingHorizontal: 20,
+  sheetGradient: { flex: 1, padding: 24, paddingTop: 14 },
+  sheetHandle: { width: 44, height: 5, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 3, alignSelf: "center", marginBottom: 25 },
+  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 30 },
+  sheetTitle: { color: "#FFF", fontSize: 26, fontWeight: "800" },
+  sheetBalance: { color: COLORS.secondaryText, fontSize: 14, marginTop: 4 },
+  secureBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(16, 185, 129, 0.15)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  secureText: { color: COLORS.success, fontSize: 11, fontWeight: "700", marginLeft: 4 },
+  inputWrapper: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "rgba(255,255,255,0.04)", 
+    borderRadius: 20, 
+    padding: 18, 
+    marginBottom: 20, 
+    borderWidth: 1.5, 
+    borderColor: "rgba(255,255,255,0.06)" 
   },
-  compactRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    height: 50,
-  },
+  currency: { color: COLORS.primary, fontSize: 34, fontWeight: "bold", marginRight: 12 },
+  sheetInput: { flex: 1, color: "#FFF", fontSize: 34, fontWeight: "bold" },
+  chipContainer: { flexDirection: "row", justifyContent: "space-between", marginBottom: 30 },
+  amountChip: { backgroundColor: "rgba(255,255,255,0.05)", paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  chipText: { color: "#FFF", fontWeight: "600", fontSize: 13 },
+  summaryBox: { backgroundColor: "rgba(255,255,255,0.03)", padding: 20, borderRadius: 20, marginBottom: 30 },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  summaryLabel: { color: COLORS.secondaryText, fontSize: 13 },
+  summaryValue: { color: "#FFF", fontSize: 14 },
+  sheetActionBtn: { borderRadius: 18, overflow: "hidden" },
+  btnGradient: { paddingVertical: 20, flexDirection: "row", justifyContent: "center", alignItems: "center" },
+  btnText: { color: "#FFF", fontSize: 17, fontWeight: "bold" },
+
+  // EXISTING UI STYLES
+  headerContainer: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 100 },
+  headerGradient: { flex: 1, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, paddingTop: Platform.OS === "android" ? 40 : 50, paddingHorizontal: 20 },
+  compactRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", height: 50 },
   userInfo: { flexDirection: "row", alignItems: "center" },
-  avatarContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
+  avatarContainer: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginRight: 10 },
   headerAvatarImage: { width: "100%", height: "100%", borderRadius: 20 },
-  onlineDot: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.success,
-    borderWidth: 1.5,
-    borderColor: "#1E293B",
-  },
+  onlineDot: { position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.success, borderWidth: 1.5, borderColor: "#1E293B" },
   greetingText: { color: "#FFF", fontWeight: "bold" },
   statusText: { color: COLORS.secondaryText, fontSize: 11 },
-  iconButton: {
-    padding: 8,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 18,
-    position: "relative",
-  },
-  notifBadge: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    backgroundColor: "red",
-    borderRadius: 10,
-    minWidth: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 2,
-  },
+  iconButton: { padding: 8, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 18 },
+  notifBadge: { position: "absolute", top: -2, right: -2, backgroundColor: "red", borderRadius: 10, minWidth: 16, height: 16, alignItems: "center", justifyContent: "center" },
   notifText: { color: "#FFF", fontSize: 9, fontWeight: "bold" },
   expandedContent: { marginTop: 10 },
-  divider: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginVertical: 10,
-  },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 15,
-  },
+  divider: { height: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 10 },
+  statsRow: { flexDirection: "row", justifyContent: "space-around", marginBottom: 15 },
   statItem: { alignItems: "center" },
   statLabel: { color: "#94A3B8", fontSize: 10 },
   statValue: { color: "#FFF", fontWeight: "bold" },
   verticalLine: { width: 1, backgroundColor: "rgba(255,255,255,0.1)" },
-  expButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.1)",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginBottom: 5,
-  },
+  expButton: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.1)", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, marginBottom: 5 },
   logoutBtn: { backgroundColor: "rgba(239, 68, 68, 0.2)" },
   expButtonText: { color: "#FFF", marginLeft: 5 },
   logoutText: { color: "#FCA5A5" },
-  dragHandle: {
-    alignItems: "center",
-    justifyContent: "flex-end",
-    paddingBottom: 6,
-    height: 24,
-  },
+  dragHandle: { alignItems: "center", justifyContent: "flex-end", paddingBottom: 6, height: 24 },
   scrollView: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
-  balanceCard: {
-    borderRadius: 20,
-    padding: 24,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-    shadowColor: "#2563EB",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  balanceLabel: {
-    color: "#BFDBFE",
-    fontSize: 13,
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-  balanceAmount: {
-    color: "#FFF",
-    fontSize: 28,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  withdrawBtn: {
-    backgroundColor: "#FFF",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  withdrawText: { color: COLORS.primary, fontWeight: "700", fontSize: 13 },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: COLORS.dark,
-    marginBottom: 10,
-  },
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    marginBottom: 20,
-  },
+  balanceCard: { borderRadius: 24, padding: 24, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24, elevation: 8 },
+  balanceLabel: { color: "#BFDBFE", fontSize: 13, fontWeight: "500", marginBottom: 4 },
+  balanceAmount: { color: "#FFF", fontSize: 32, fontWeight: "800" },
+  balanceActions: { gap: 8 },
+  miniActionBtn: { backgroundColor: "#FFF", paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, flexDirection: "row", alignItems: "center", gap: 6 },
+  miniActionText: { color: COLORS.primary, fontWeight: "700", fontSize: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", color: COLORS.dark, marginBottom: 10 },
+  gridContainer: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 20 },
   gridItem: { width: "23%", alignItems: "center" },
-  gridIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 5,
-  },
+  gridIcon: { width: 50, height: 50, borderRadius: 15, alignItems: "center", justifyContent: "center", marginBottom: 5 },
   gridLabel: { fontSize: 11, color: "#475569", fontWeight: "500" },
-  recentHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
+  recentHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   seeAll: { color: COLORS.primary },
-  activityItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
+  activityItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 15, borderRadius: 12, marginBottom: 10 },
   actTitle: { fontWeight: "bold", color: COLORS.dark },
   actDate: { color: "#94A3B8", fontSize: 12 },
-  floatingFab: {
-    position: "absolute",
-    bottom: 30,
-    right: 20,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  fabGradient: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#FFF",
-  },
+  floatingFab: { position: "absolute", bottom: 30, right: 20 },
+  fabGradient: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFF" },
 });
