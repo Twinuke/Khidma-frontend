@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import * as ImagePicker from 'expo-image-picker';
@@ -23,7 +23,7 @@ import {
   TouchableOpacity,
   View,
   Share,
-  Linking, // ✅ Added for opening document URLs
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
@@ -53,28 +53,29 @@ const REACTION_OPTIONS = [
 export default function SocialPage() {
   const { user } = useUser();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>(); 
   const insets = useSafeAreaInsets();
   
+  const filterUserId = route.params?.filterUserId;
+  const isFilteredView = !!filterUserId;
+
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [reactionPickerId, setReactionPickerId] = useState<number | null>(null);
   
-  // Create Post States
   const [createPostVisible, setCreatePostVisible] = useState(false);
   const [postContent, setPostContent] = useState("");
   const [posting, setPosting] = useState(false);
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
 
-  // Comment States
   const [activePostId, setActivePostId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
 
   const activePost = posts.find((p) => p.postId === activePostId);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Fix: Base URL for files (strips /api from the end)
   const FILE_BASE_URL = api.defaults.baseURL?.replace(/\/api\/?$/, "");
 
   const headerOpacity = scrollY.interpolate({
@@ -84,12 +85,17 @@ export default function SocialPage() {
   });
 
   useEffect(() => {
-    if (user?.userId) fetchFeed();
-  }, [user?.userId]);
+    fetchFeed();
+  }, [user?.userId, filterUserId]);
 
   const fetchFeed = async () => {
+    setLoading(true);
     try {
-      const res = await api.get(`/Social/feed/${user?.userId}`);
+      const endpoint = filterUserId 
+        ? `/Social/user/${filterUserId}?viewerId=${user?.userId}` 
+        : `/Social/feed/${user?.userId}`;
+        
+      const res = await api.get(endpoint);
       setPosts(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       setPosts([]);
@@ -99,7 +105,6 @@ export default function SocialPage() {
     }
   };
 
-  // --- MEDIA HANDLERS ---
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -117,12 +122,7 @@ export default function SocialPage() {
   const handleDownload = async (url: string) => {
     try {
       const fullUrl = FILE_BASE_URL + url;
-      const supported = await Linking.canOpenURL(fullUrl);
-      if (supported) {
-        await Linking.openURL(fullUrl);
-      } else {
-        Alert.alert("Error", "Don't know how to open this URL");
-      }
+      await Linking.openURL(fullUrl);
     } catch (error) {
       Alert.alert("Error", "Failed to open document");
     }
@@ -245,9 +245,11 @@ export default function SocialPage() {
     return (
       <View style={styles.postCard}>
         <View style={styles.postHeader}>
-          <Image source={{ uri: item.user?.profileImageUrl || "https://via.placeholder.com/44" }} style={styles.postAvatar} />
+          <TouchableOpacity onPress={() => navigation.navigate("UserProfile", { userId: item.userId })}>
+            <Image source={{ uri: item.user?.profileImageUrl || "https://via.placeholder.com/44" }} style={styles.postAvatar} />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={styles.postAuthorName}>{item.user?.fullName}</Text>
+            <Text style={styles.postAuthorName} onPress={() => navigation.navigate("UserProfile", { userId: item.userId })}>{item.user?.fullName}</Text>
             <Text style={styles.postTimeText}>{new Date(item.createdAt).toLocaleDateString()}</Text>
           </View>
           <TouchableOpacity onPress={() => handleMoreOptions(item)} style={styles.moreBtn}>
@@ -266,7 +268,6 @@ export default function SocialPage() {
             />
           )}
 
-          {/* ✅ FIXED: Trigger handleDownload when clicking CV/Document */}
           {item.documentUrl && (
             <TouchableOpacity 
               style={styles.documentPreview} 
@@ -352,15 +353,27 @@ export default function SocialPage() {
         <LinearGradient colors={["#0F172A", "#1E293B", "#334155"]} style={[styles.headerGradient, { paddingTop: insets.top + 10 }]}>
           <View style={styles.topNav}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.circleIconBtn}><Ionicons name="arrow-back" size={24} color="#FFF" /></TouchableOpacity>
-            <Text style={styles.navTitle}>Community</Text>
-            <TouchableOpacity onPress={() => setCreatePostVisible(true)} style={styles.circleIconBtn}><Ionicons name="add" size={28} color="#FFF" /></TouchableOpacity>
+            
+            <Text style={styles.navTitle}>{isFilteredView ? "User Activity" : "Community"}</Text>
+            
+            {!isFilteredView && (
+                <TouchableOpacity onPress={() => setCreatePostVisible(true)} style={styles.circleIconBtn}><Ionicons name="add" size={28} color="#FFF" /></TouchableOpacity>
+            )}
+            {isFilteredView && <View style={{width: 44}} />}
           </View>
           <View style={styles.headerBody}>
-            <Text style={styles.headerTitle}>Network Insights</Text>
-            <Text style={styles.headerSubtitle}>Stay updated with your professional circle</Text>
+            <Text style={styles.headerTitle}>{isFilteredView ? "Shared Insights" : "Network Insights"}</Text>
+            <Text style={styles.headerSubtitle}>{isFilteredView ? "Browse specific user updates" : "Stay updated with your professional circle"}</Text>
           </View>
         </LinearGradient>
       </Animated.View>
+
+      {isFilteredView && (
+          <TouchableOpacity style={styles.clearFilterBtn} onPress={() => navigation.setParams({ filterUserId: undefined })}>
+              <Text style={styles.clearFilterText}>View General Feed</Text>
+              <Ionicons name="refresh" size={16} color="#FFF" />
+          </TouchableOpacity>
+      )}
 
       <FlatList
         data={posts}
@@ -369,9 +382,15 @@ export default function SocialPage() {
         contentContainerStyle={styles.listContainer}
         refreshing={refreshing}
         onRefresh={() => { setRefreshing(true); fetchFeed(); }}
-        ListEmptyComponent={loading ? <ActivityIndicator size="large" style={{marginTop: 50}} /> : null}
+        ListEmptyComponent={loading ? <ActivityIndicator size="large" style={{marginTop: 50}} /> : (
+            <View style={{alignItems: 'center', marginTop: 50}}>
+                <Ionicons name="newspaper-outline" size={48} color={COLORS.subtext} />
+                <Text style={{color: COLORS.subtext, marginTop: 10, fontWeight: '600'}}>No posts to show here.</Text>
+            </View>
+        )}
       />
 
+      {/* ✅ RESTORED: Create Post Modal */}
       <Modal visible={createPostVisible} animationType="slide" presentationStyle="fullScreen">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: '#FFF' }}>
           <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 60 : 20 }]}>
@@ -404,7 +423,6 @@ export default function SocialPage() {
               autoFocus
             />
 
-            {/* PREVIEWS */}
             {selectedImage && (
               <View style={styles.mediaPreviewBox}>
                 <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
@@ -431,7 +449,7 @@ export default function SocialPage() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Comments Modal */}
+      {/* ✅ RESTORED: Comments Modal */}
       <Modal visible={activePostId !== null} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: '#FFF' }}>
           <View style={styles.modalHeader}>
@@ -523,5 +541,7 @@ const styles = StyleSheet.create({
   commentUser: { fontWeight: '700', fontSize: 13, marginBottom: 2 },
   commentText: { fontSize: 14, color: '#334155' },
   commentInputArea: { flexDirection: 'row', alignItems: 'center', padding: 16, borderTopWidth: 1, borderColor: '#F1F5F9' },
-  commentInput: { flex: 1, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 10, maxHeight: 100 }
+  commentInput: { flex: 1, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 10, maxHeight: 100 },
+  clearFilterBtn: { margin: 16, backgroundColor: COLORS.primary, padding: 10, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  clearFilterText: { color: '#FFF', fontWeight: '700' }
 });

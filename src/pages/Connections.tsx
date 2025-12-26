@@ -25,7 +25,6 @@ import { useUser } from "../context/UserContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-// ✅ THEME COLORS
 const COLORS = {
   bg: "#F8FAFC",
   card: "#FFFFFF",
@@ -51,11 +50,9 @@ export default function Network() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Profile Preview Modal State
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Animations
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -86,37 +83,28 @@ export default function Network() {
 
   const handleAction = async (connectionId: number, action: "accept" | "reject") => {
     try {
-      // Optimistic Update
       setData((prev) => prev.filter((item) => item.connectionId !== connectionId));
-      
       const endpoint = action === "accept" 
         ? `/UserConnections/accept/${connectionId}`
         : `/UserConnections/reject/${connectionId}`;
-      
       await api.post(endpoint);
     } catch (error) {
-      console.error("Action Failed", error);
-      fetchNetworkData(); // Revert on fail
+      fetchNetworkData();
     }
   };
 
-  // ✅ FIXED: Handle Chat Opening Correctly
   const handleMessage = async (targetUser: any) => {
     if (!user?.userId) return;
     try {
-      // 1. Get or Create Conversation ID first
       const res = await api.post("/Chat/open", {
         user1Id: user.userId,
         user2Id: targetUser.userId
       });
-
-      // 2. Navigate with VALID conversationId
       navigation.navigate("ChatScreen", { 
-        conversationId: res.data.conversationId, // ✅ No more null
+        conversationId: res.data.conversationId,
         otherUser: targetUser 
       });
     } catch (e) {
-      console.log("Chat Open Error", e);
       Alert.alert("Error", "Could not open chat.");
     }
   };
@@ -138,13 +126,6 @@ export default function Network() {
         setModalVisible(false);
         setSelectedUser(null);
     });
-  };
-
-  const navigateToFullProfile = () => {
-      closeProfilePreview();
-      setTimeout(() => {
-          navigation.navigate("UserProfile", { userId: selectedUser?.userId });
-      }, 300);
   };
 
   const panResponder = useRef(
@@ -181,7 +162,10 @@ export default function Network() {
 
             <View style={styles.infoCol}>
                 <Text style={styles.name}>{displayUser.fullName}</Text>
-                <Text style={styles.role}>{displayUser.jobTitle || displayUser.userType}</Text>
+                {/* ✅ FIXED: Use descriptive text instead of raw userType number */}
+                <Text style={styles.role}>
+                    {displayUser.jobTitle || (displayUser.userType === 1 ? "Client" : "Freelancer")}
+                </Text>
                 {displayUser.city && (
                     <View style={styles.locRow}>
                         <Ionicons name="location-outline" size={12} color={COLORS.subtext} />
@@ -194,25 +178,15 @@ export default function Network() {
         <View style={styles.actionRow}>
             {activeTab === "Requests" ? (
                 <>
-                    <TouchableOpacity 
-                        style={[styles.btn, styles.btnReject]} 
-                        onPress={() => handleAction(item.connectionId, "reject")}
-                    >
+                    <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={() => handleAction(item.connectionId, "reject")}>
                         <Text style={[styles.btnText, { color: COLORS.danger }]}>Ignore</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                        style={[styles.btn, styles.btnAccept]}
-                        onPress={() => handleAction(item.connectionId, "accept")}
-                    >
+                    <TouchableOpacity style={[styles.btn, styles.btnAccept]} onPress={() => handleAction(item.connectionId, "accept")}>
                         <Text style={[styles.btnText, { color: "#FFF" }]}>Accept</Text>
                     </TouchableOpacity>
                 </>
             ) : (
-                // ✅ UPDATED BUTTON: Calls handleMessage
-                <TouchableOpacity 
-                    style={[styles.btn, styles.btnMessage]}
-                    onPress={() => handleMessage(displayUser)}
-                >
+                <TouchableOpacity style={[styles.btn, styles.btnMessage]} onPress={() => handleMessage(displayUser)}>
                     <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
                     <Text style={[styles.btnText, { color: COLORS.primary }]}>Message</Text>
                 </TouchableOpacity>
@@ -225,7 +199,6 @@ export default function Network() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-
       <View style={styles.headerContainer}>
         <LinearGradient
             colors={["#0F172A", "#1E293B", "#334155"]}
@@ -238,9 +211,7 @@ export default function Network() {
                     <Text style={styles.headerTitle}>Network</Text>
                     <Text style={styles.headerSub}>Grow your professional circle.</Text>
                 </View>
-                {/* Optional: Add friend button */}
             </View>
-
             <View style={styles.tabContainer}>
                 {TABS.map((tab) => (
                     <TouchableOpacity 
@@ -248,9 +219,7 @@ export default function Network() {
                         style={[styles.tab, activeTab === tab && styles.activeTab]}
                         onPress={() => setActiveTab(tab)}
                     >
-                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                            {tab}
-                        </Text>
+                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
                     </TouchableOpacity>
                 ))}
             </View>
@@ -272,9 +241,6 @@ export default function Network() {
                     <Text style={styles.emptyTitle}>
                         {activeTab === "Requests" ? "No Pending Requests" : "No Connections Yet"}
                     </Text>
-                    <Text style={styles.emptySub}>
-                        {activeTab === "Requests" ? "Connect with people to see them here." : "Start networking to grow your list."}
-                    </Text>
                 </View>
             }
           />
@@ -286,15 +252,8 @@ export default function Network() {
             <TouchableWithoutFeedback onPress={closeProfilePreview}>
                 <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} />
             </TouchableWithoutFeedback>
-            
-            <Animated.View 
-                style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]}
-                {...panResponder.panHandlers}
-            >
-                <View style={styles.handleContainer}>
-                    <View style={styles.handle} />
-                </View>
-
+            <Animated.View style={[styles.sheet, { transform: [{ translateY: slideAnim }] }]} {...panResponder.panHandlers}>
+                <View style={styles.handleContainer}><View style={styles.handle} /></View>
                 {selectedUser && (
                     <View style={styles.sheetContent}>
                         <View style={styles.sheetHeader}>
@@ -307,19 +266,12 @@ export default function Network() {
                             )}
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.sheetName}>{selectedUser.fullName}</Text>
-                                <Text style={styles.sheetRole}>{selectedUser.jobTitle || selectedUser.userType}</Text>
-                                <Text style={styles.sheetLoc}>{selectedUser.city || "Remote"}</Text>
+                                <Text style={styles.sheetRole}>
+                                    {selectedUser.jobTitle || (selectedUser.userType === 1 ? "Client" : "Freelancer")}
+                                </Text>
                             </View>
                         </View>
-
-                        {selectedUser.bio && (
-                            <View style={styles.section}>
-                                <Text style={styles.sectionLabel}>About</Text>
-                                <Text style={styles.bioText} numberOfLines={3}>{selectedUser.bio}</Text>
-                            </View>
-                        )}
-
-                        <TouchableOpacity style={styles.fullProfileBtn} onPress={navigateToFullProfile}>
+                        <TouchableOpacity style={styles.fullProfileBtn} onPress={() => { closeProfilePreview(); navigation.navigate("UserProfile", { userId: selectedUser?.userId }); }}>
                             <Text style={styles.fullProfileText}>View Full Profile</Text>
                             <Ionicons name="arrow-forward" size={18} color="#FFF" />
                         </TouchableOpacity>
@@ -328,35 +280,24 @@ export default function Network() {
             </Animated.View>
         </View>
       </Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  
-  headerContainer: {
-    backgroundColor: '#F8FAFC',
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    overflow: 'hidden',
-    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, zIndex: 10
-  },
+  headerContainer: { backgroundColor: '#F8FAFC', borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden', shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 10, elevation: 5, zIndex: 10 },
   gradientHeader: { paddingBottom: 20, paddingHorizontal: 24 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   headerTitle: { fontSize: 24, fontWeight: '800', color: '#FFF' },
   headerSub: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-
   tabContainer: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, padding: 4 },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12 },
   activeTab: { backgroundColor: '#FFF' },
   tabText: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.6)' },
   activeTabText: { color: COLORS.text, fontWeight: '700' },
-
   listContent: { padding: 24, paddingBottom: 100 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
   card: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, marginBottom: 16, shadowColor: "#64748B", shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28 },
@@ -367,24 +308,19 @@ const styles = StyleSheet.create({
   role: { fontSize: 13, color: COLORS.subtext, marginTop: 2 },
   locRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   locText: { fontSize: 12, color: COLORS.subtext },
-
   actionRow: { flexDirection: 'row', gap: 10 },
   btn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   btnReject: { borderColor: COLORS.danger, backgroundColor: '#FFF' },
   btnAccept: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   btnMessage: { flexDirection: 'row', backgroundColor: '#EFF6FF', borderColor: '#EFF6FF' },
   btnText: { fontSize: 13, fontWeight: '700' },
-
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginTop: 16 },
-  emptySub: { fontSize: 14, color: COLORS.subtext, marginTop: 6 },
-
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.backdrop },
   sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, paddingHorizontal: 24, maxHeight: '80%' },
   handleContainer: { alignItems: 'center', paddingVertical: 12 },
   handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1' },
-  
   sheetContent: { marginTop: 10 },
   sheetHeader: { flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 24 },
   sheetAvatar: { width: 70, height: 70, borderRadius: 35 },
@@ -392,12 +328,6 @@ const styles = StyleSheet.create({
   sheetAvatarText: { fontSize: 28, fontWeight: '700', color: COLORS.subtext },
   sheetName: { fontSize: 20, fontWeight: '800', color: COLORS.text },
   sheetRole: { fontSize: 15, color: COLORS.primary, fontWeight: '600', marginTop: 2 },
-  sheetLoc: { fontSize: 14, color: COLORS.subtext, marginTop: 2 },
-
-  section: { marginBottom: 24 },
-  sectionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  bioText: { fontSize: 15, color: COLORS.subtext, lineHeight: 22 },
-  
   fullProfileBtn: { backgroundColor: COLORS.text, paddingVertical: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   fullProfileText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

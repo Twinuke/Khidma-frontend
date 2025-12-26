@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Linking from "expo-linking";
+import * as Location from 'expo-location'; // ✅ Ensure expo-location is installed
 import React, { useCallback, useState, useRef, useEffect } from "react";
 import {
   ActivityIndicator,
@@ -35,7 +36,7 @@ import * as Sharing from "expo-sharing";
 
 import api from "../config/api";
 import { User, useUser } from "../context/UserContext";
-import { MiniProfileSheet } from "../components/MiniProfileSheet"; // ✅ 1. Import Added
+import { MiniProfileSheet } from "../components/MiniProfileSheet";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -106,7 +107,6 @@ export default function Profile() {
   const [cityModalVisible, setCityModalVisible] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   
-  // Direct Add State
   const [isAddingLinkedin, setIsAddingLinkedin] = useState(false);
   const [tempLinkedin, setTempLinkedin] = useState("");
   const [isUploadingCv, setIsUploadingCv] = useState(false);
@@ -115,12 +115,11 @@ export default function Profile() {
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [region, setRegion] = useState({ latitude: 33.8938, longitude: 35.5018, latitudeDelta: 0.05, longitudeDelta: 0.05 });
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
 
-  // ✅ 2. State for Mini Profile Sheet (Reviewer)
   const [miniProfileVisible, setMiniProfileVisible] = useState(false);
   const [selectedReviewerId, setSelectedReviewerId] = useState<number | null>(null);
 
-  // Animation Effect for Photo Modal
   useEffect(() => {
     if (photoModalVisible) {
       Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true }).start();
@@ -157,8 +156,10 @@ export default function Profile() {
         if (isOwnProfile) initializeForm(userData);
         if (userData.city) setSelectedCity(userData.city);
         if (userData.latitude && userData.longitude) {
+            const coords = { latitude: userData.latitude, longitude: userData.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
             setPinCoords({ lat: userData.latitude, lng: userData.longitude });
-            setRegion({ latitude: userData.latitude, longitude: userData.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+            setRegion(coords);
+            mapRef.current?.animateToRegion(coords, 1000);
         }
       }
     } catch (e) {
@@ -186,20 +187,25 @@ export default function Profile() {
 
   const checkConnectionStatus = async () => {
       try {
-          const res = await api.get(`/Social/status/${contextUser?.userId}/${targetUserId}`);
+          const res = await api.get(`/UserConnections/status/${contextUser?.userId}/${targetUserId}`);
           setConnectionStatus(res.data.status || "None");
-      } catch (e) { console.log(e); }
+      } catch (e) { console.log("Status check error", e); }
   };
 
   const handleConnect = async () => {
       setConnecting(true);
       try {
-          // Send receiverId instead of targetId to fix 404/500 errors
-          await api.post('/Social/connect', { requesterId: contextUser?.userId, receiverId: targetUserId });
+          await api.post('/UserConnections/send', { 
+              requesterId: contextUser?.userId, 
+              receiverId: targetUserId 
+          });
           setConnectionStatus("Pending");
           Alert.alert("Request Sent", "Connection request sent.");
-      } catch (e: any) { Alert.alert("Error", e.response?.data || "Could not send request."); } 
-      finally { setConnecting(false); }
+      } catch (e: any) { 
+          Alert.alert("Error", e.response?.data?.error || e.response?.data || "Could not send request."); 
+      } finally { 
+          setConnecting(false); 
+      }
   };
 
   const handleMessage = async () => {
@@ -207,6 +213,10 @@ export default function Profile() {
           const response = await api.post("/Chat/open", { user1Id: contextUser?.userId, user2Id: targetUserId });
           navigation.navigate("ChatScreen", { conversationId: response.data.conversationId, otherUser: displayUser });
       } catch (e) { console.log("Chat Error:", e); }
+  };
+
+  const handleViewPosts = () => {
+      navigation.navigate("SocialPage", { filterUserId: targetUserId });
   };
 
   const handleSubmitReview = async () => {
@@ -253,6 +263,51 @@ export default function Profile() {
       fetchFullProfile(contextUser!.userId);
     } catch (e: any) { Alert.alert("Error", "Could not save profile."); } finally { setIsSaving(false); }
   };
+
+  // ✅ FIXED: Location detection logic with Settings prompt
+  const handleDetectLocation = async () => {
+    setIsDetectingLocation(true);
+    try {
+      let { status } = await Location.getForegroundPermissionsAsync();
+      
+      if (status !== 'granted') {
+          const request = await Location.requestForegroundPermissionsAsync();
+          status = request.status;
+      }
+
+      if (status !== 'granted') {
+        setIsDetectingLocation(false);
+        Alert.alert(
+            "Access Denied", 
+            "We need location access to detect your city automatically. Please enable it in your phone settings.",
+            [
+                { text: "Cancel", style: "cancel" },
+                { text: "Open Settings", onPress: () => Linking.openSettings() }
+            ]
+        );
+        return;
+      }
+
+      let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = loc.coords;
+      const newRegion = { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 };
+
+      setPinCoords({ lat: latitude, lng: longitude });
+      setRegion(newRegion);
+      mapRef.current?.animateToRegion(newRegion, 1000);
+
+      const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geo.length > 0) {
+        const city = geo[0].city || geo[0].region || "Detected Location";
+        setSelectedCity(city);
+      }
+    } catch (e) {
+      Alert.alert("Error", "Could not detect location. Make sure GPS is enabled.");
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
+
   const openLinkedinLink = () => { if (displayUser?.linkedinUrl) Linking.openURL(displayUser.linkedinUrl); };
   const saveLinkedinDirectly = async () => {
       if (!isOwnProfile || !tempLinkedin.trim()) return;
@@ -266,6 +321,7 @@ export default function Profile() {
           Alert.alert("Success", "LinkedIn connected!");
       } catch (e) { Alert.alert("Error", "Failed to save LinkedIn URL"); }
   };
+
   const handleCvUpload = async () => {
     if (!isOwnProfile) return;
     try {
@@ -276,20 +332,13 @@ export default function Profile() {
         setIsUploadingCv(true);
         let fileUri = asset.uri;
         // @ts-ignore
-        if (fileUri.startsWith("content://") && FileSystem.cacheDirectory) {
-            try {
-                // @ts-ignore
-                const dest = FileSystem.cacheDirectory + (asset.name || "temp.pdf");
-                // @ts-ignore
-                await FileSystem.copyAsync({ from: fileUri, to: dest });
-                fileUri = dest;
-            } catch (err) {}
-        }
-        // @ts-ignore
         const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: "base64" });
         const dataUri = `data:application/pdf;base64,${base64}`;
-        if (isEditing) { setFormData(prev => ({ ...prev, cvUrl: dataUri })); Alert.alert("Attached", "PDF attached."); } 
-        else {
+        
+        if (isEditing) { 
+          setFormData(prev => ({ ...prev, cvUrl: dataUri })); 
+          Alert.alert("Attached", "PDF attached."); 
+        } else {
             const payload = getSafePayload({ cvUrl: dataUri });
             await api.put(`/Users/${contextUser?.userId}`, payload);
             await updateUser({ cvUrl: dataUri });
@@ -299,36 +348,86 @@ export default function Profile() {
       }
     } catch (err: any) { Alert.alert("Upload Failed", "Could not upload PDF."); } finally { setIsUploadingCv(false); }
   };
+
+  // ✅ FIXED: Better View/Download Logic for CV
   const handleViewCv = async () => {
     if (!displayUser?.cvUrl) return;
-    setIsViewingCv(true);
-    try {
-        const base64Data = displayUser.cvUrl.includes(",") ? displayUser.cvUrl.split(",")[1] : displayUser.cvUrl;
-        // @ts-ignore
-        const fileUri = FileSystem.cacheDirectory + 'User_Resume.pdf';
-        // @ts-ignore
-        await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: "base64" });
-        if (Platform.OS === 'android') {
-            // @ts-ignore
-            const contentUri = await FileSystem.getContentUriAsync(fileUri);
-            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, flags: 1, type: 'application/pdf' });
-        } else {
-            await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Resume' });
+    
+    Alert.alert("CV Options", "What would you like to do with the resume?", [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "View / Open", 
+          onPress: async () => {
+              setIsViewingCv(true);
+              try {
+                  const base64Data = displayUser.cvUrl.includes(",") ? displayUser.cvUrl.split(",")[1] : displayUser.cvUrl;
+                  const fileUri = FileSystem.cacheDirectory + 'Khidma_Resume.pdf';
+                  await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: "base64" });
+                  
+                  if (Platform.OS === 'android') {
+                      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+                      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', { data: contentUri, flags: 1, type: 'application/pdf' });
+                  } else {
+                      await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf' });
+                  }
+              } catch (e) { Alert.alert("Error", "Could not open document."); } finally { setIsViewingCv(false); }
+          }
+        },
+        {
+          text: "Share / Save",
+          onPress: async () => {
+              const base64Data = displayUser.cvUrl.includes(",") ? displayUser.cvUrl.split(",")[1] : displayUser.cvUrl;
+              const fileUri = FileSystem.cacheDirectory + 'Khidma_Resume.pdf';
+              await FileSystem.writeAsStringAsync(fileUri, base64Data, { encoding: "base64" });
+              await Sharing.shareAsync(fileUri);
+          }
         }
-    } catch (error) { Alert.alert("Error", "Could not open PDF."); } finally { setIsViewingCv(false); }
+    ]);
   };
-  const handlePhotoOption = async (option: any) => {
+
+  const handlePhotoOption = async (option: "camera" | "gallery" | "remove") => {
     setPhotoModalVisible(false);
     if (!isOwnProfile) return;
+    
     setTimeout(async () => {
-      if (option === "remove") { setFormData(prev => ({ ...prev, profileImageUrl: null as any })); return; }
-      const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.4, base64: true };
+      if (option === "remove") { 
+        setFormData(prev => ({ ...prev, profileImageUrl: null as any })); 
+        return; 
+      }
+      
+      const opts: ImagePicker.ImagePickerOptions = { 
+        mediaTypes: ImagePicker.MediaTypeOptions.Images, 
+        allowsEditing: true, 
+        aspect: [1, 1], 
+        quality: 0.4, 
+        base64: true 
+      };
+
       try {
-        const result = option === "camera" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
-        if (!result.canceled && result.assets?.[0].base64) {
-          setFormData(prev => ({ ...prev, profileImageUrl: `data:image/jpeg;base64,${result.assets[0].base64}` }));
+        if (option === "camera") {
+          const { status } = await ImagePicker.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert("Permission Error", "Camera access is required to take a photo.");
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync(opts);
+          if (!result.canceled && result.assets?.[0].base64) {
+            setFormData(prev => ({ ...prev, profileImageUrl: `data:image/jpeg;base64,${result.assets[0].base64}` }));
+          }
+        } else {
+          const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (status !== 'granted') {
+            Alert.alert("Permission Error", "Gallery access is required to select a photo.");
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync(opts);
+          if (!result.canceled && result.assets?.[0].base64) {
+            setFormData(prev => ({ ...prev, profileImageUrl: `data:image/jpeg;base64,${result.assets[0].base64}` }));
+          }
         }
-      } catch (e) { Alert.alert("Error", "Photo selection failed."); }
+      } catch (e) { 
+        Alert.alert("Error", "Photo selection failed."); 
+      }
     }, 400);
   };
 
@@ -360,16 +459,6 @@ export default function Profile() {
     );
   };
 
-  const InfoItem = ({ icon, label, value }: any) => (
-    <View style={styles.infoRow}>
-      <View style={[styles.infoIconBox]}><Ionicons name={icon} size={18} color={"#64748B"} /></View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={[styles.infoValue]}>{value || "Not Set"}</Text>
-      </View>
-    </View>
-  );
-
   if (!displayUser) return <View style={styles.center}><ActivityIndicator size="large" color="#2563EB" /></View>;
 
   const activeImage = isEditing ? formData.profileImageUrl : displayUser.profileImageUrl;
@@ -380,7 +469,6 @@ export default function Profile() {
       <StatusBar barStyle="light-content" />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
-        {/* --- HEADER --- */}
         <LinearGradient colors={["#0F172A", "#1E293B", "#334155"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.headerGradient}>
             <View style={styles.navBar}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.navBtn}>
@@ -431,7 +519,6 @@ export default function Profile() {
                     </>
                 )}
 
-                {/* --- STATS --- */}
                 <View style={styles.statsRowDark}>
                     <View style={styles.stat}>
                         <Text style={styles.statNumDark}>{stats.averageRating || "N/A"}</Text>
@@ -453,7 +540,6 @@ export default function Profile() {
                     </View>
                 </View>
 
-                {/* --- ACTION BAR --- */}
                 {!isOwnProfile && !isEditing && (
                     <View style={styles.actionBar}>
                         {connectionStatus === "Accepted" ? (
@@ -486,8 +572,6 @@ export default function Profile() {
         </LinearGradient>
 
         <Animated.View style={[styles.bodyContainer, { opacity: fadeAnim }]}>
-            
-            {/* Availability */}
             <View style={styles.section}>
                 <View style={styles.rowBetween}>
                     <View style={{flexDirection:'row', alignItems:'center'}}>
@@ -502,7 +586,6 @@ export default function Profile() {
                 </View>
             </View>
 
-            {/* About */}
             <View style={styles.section}>
                 <Text style={styles.sectionHeader}>About Me</Text>
                 {isEditing ? (
@@ -512,7 +595,6 @@ export default function Profile() {
                 )}
             </View>
 
-            {/* Resources */}
             <View style={styles.section}>
                 <Text style={styles.sectionHeader}>Professional Resources</Text>
                 <View style={styles.resourceRow}>
@@ -578,7 +660,17 @@ export default function Profile() {
                 </View>
             </View>
 
-            {/* ✅ TECH STACK */}
+            <View style={styles.section}>
+                <Text style={styles.sectionHeader}>Community Activity</Text>
+                <TouchableOpacity style={styles.postsBtn} onPress={handleViewPosts}>
+                    <Ionicons name="apps-outline" size={20} color="#2563EB" />
+                    <Text style={styles.postsBtnText}>
+                        {isOwnProfile ? "View your posts" : `View posts from ${displayUser.fullName}`}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={18} color="#94A3B8" style={{marginLeft: 'auto'}} />
+                </TouchableOpacity>
+            </View>
+
             {!isEditing && !isClient && aiProfile && (
                 <View style={styles.section}>
                     <View style={styles.aiHeader}>
@@ -591,12 +683,22 @@ export default function Profile() {
                 </View>
             )}
 
-            {/* Location */}
             <View style={styles.section}>
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
                     <Text style={styles.sectionHeader}>Location</Text>
-                    {isEditing && <TouchableOpacity onPress={() => setCityModalVisible(true)}><Text style={{color: '#2563EB', fontWeight: '600'}}>Change City</Text></TouchableOpacity>}
+                    {isEditing && (
+                        <View style={{flexDirection: 'row', gap: 10}}>
+                            {/* ✅ FIXED: Button to Detect GPS */}
+                            <TouchableOpacity onPress={handleDetectLocation} disabled={isDetectingLocation}>
+                                {isDetectingLocation ? <ActivityIndicator size="small" color="#2563EB" /> : <Text style={{color: '#2563EB', fontWeight: '600'}}>Detect GPS</Text>}
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setCityModalVisible(true)}><Text style={{color: '#2563EB', fontWeight: '600'}}>Select List</Text></TouchableOpacity>
+                        </View>
+                    )}
                 </View>
+                {/* ✅ Location Name Display */}
+                <Text style={{color: '#64748B', marginBottom: 10, fontSize: 13}}>📍 {selectedCity || "Unknown Location"}</Text>
+                
                 <View style={styles.mapContainer}>
                     <MapView ref={mapRef} style={styles.map} region={region} scrollEnabled={false} zoomEnabled={false}>
                         {pinCoords && <Marker coordinate={{ latitude: pinCoords.lat, longitude: pinCoords.lng }} />}
@@ -604,7 +706,6 @@ export default function Profile() {
                 </View>
             </View>
 
-            {/* ✅ REVIEWS SECTION (UPDATED) */}
             <View style={styles.section}>
                 <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12}}>
                     <Text style={styles.sectionHeader}>Reviews</Text>
@@ -618,7 +719,6 @@ export default function Profile() {
                     reviews.map((rev, index) => (
                         <View key={index} style={styles.reviewCard}>
                             <View style={styles.reviewHeader}>
-                                {/* ✅ 3. Make Profile Interactive */}
                                 <TouchableOpacity 
                                     style={{flexDirection: 'row', alignItems: 'center', flex: 1}} 
                                     onPress={() => {
@@ -643,7 +743,6 @@ export default function Profile() {
                 )}
             </View>
 
-            {/* Actions */}
             {isOwnProfile && (
                 isEditing ? (
                     <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSaving}>
@@ -659,7 +758,6 @@ export default function Profile() {
         </Animated.View>
       </ScrollView>
 
-      {/* --- RATING MODAL (FIXED KEYBOARD) --- */}
       <Modal visible={rateModalVisible} transparent animationType="fade" onRequestClose={() => setRateModalVisible(false)}>
           <TouchableWithoutFeedback onPress={() => { setRateModalVisible(false); Keyboard.dismiss(); }}>
               <View style={styles.modalBackdrop}>
@@ -684,7 +782,6 @@ export default function Profile() {
           </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Standard Modals */}
       <Modal visible={photoModalVisible} transparent onRequestClose={() => setPhotoModalVisible(false)}>
          <TouchableWithoutFeedback onPress={() => setPhotoModalVisible(false)}><View style={styles.modalBackdrop} /></TouchableWithoutFeedback>
          <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
@@ -709,7 +806,22 @@ export default function Profile() {
               </View>
               <ScrollView>
                   {CITY_KEYS.map(city => (
-                      <TouchableOpacity key={city} style={styles.cityRow} onPress={() => { setCityModalVisible(false); setSelectedCity(city); }}>
+                      <TouchableOpacity 
+                        key={city} 
+                        style={styles.cityRow} 
+                        onPress={() => { 
+                            setCityModalVisible(false); 
+                            setSelectedCity(city);
+                            // ✅ FIXED: Update Map and Pin when selecting from list
+                            const coords = LEBANESE_CITIES[city];
+                            if (coords) {
+                                const newRegion = { latitude: coords.lat, longitude: coords.lng, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+                                setPinCoords({ lat: coords.lat, lng: coords.lng });
+                                setRegion(newRegion);
+                                mapRef.current?.animateToRegion(newRegion, 1000); // ✅ Animation fix
+                            }
+                        }}
+                      >
                           <Text style={[styles.cityText, selectedCity === city && { color: '#2563EB', fontWeight: 'bold' }]}>{city}</Text>
                           {selectedCity === city && <Ionicons name="checkmark-circle" size={20} color="#2563EB" />}
                       </TouchableOpacity>
@@ -718,7 +830,6 @@ export default function Profile() {
           </View>
       </Modal>
 
-      {/* ✅ 4. Add Mini Profile Sheet Component */}
       <MiniProfileSheet
         visible={miniProfileVisible}
         userId={selectedReviewerId}
@@ -746,11 +857,6 @@ const styles = StyleSheet.create({
   headlineDark: { fontSize: 16, marginBottom: 10, textAlign: 'center', fontWeight: '500', color: 'rgba(255,255,255,0.8)' },
   inputNameDark: { fontSize: 22, fontWeight: '700', color: '#FFF', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.3)', minWidth: 200, textAlign: 'center', marginBottom: 8 },
   inputHeadlineDark: { fontSize: 16, color: '#FFF', borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.3)', minWidth: 250, textAlign: 'center', marginBottom: 12 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  roleBadgeDark: { backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  roleTextDark: { color: '#FFF', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  dotSeparator: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.4)', marginHorizontal: 8 },
-  locationDark: { fontSize: 14, color: 'rgba(255,255,255,0.9)', fontWeight: '500' },
   statsRowDark: { flexDirection: 'row', width: '100%', justifyContent: 'space-around', paddingVertical: 14, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   stat: { alignItems: 'center', minWidth: 60 },
   statNumDark: { fontSize: 18, fontWeight: '700', color: '#FFF' },
@@ -770,6 +876,9 @@ const styles = StyleSheet.create({
   bioText: { fontSize: 15, color: '#475569', lineHeight: 24 },
   textArea: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, height: 100, textAlignVertical: 'top', fontSize: 15, borderWidth: 1, borderColor: '#E2E8F0' },
   
+  postsBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  postsBtnText: { marginLeft: 10, color: '#334155', fontWeight: '600', fontSize: 15 },
+
   reviewCard: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' },
   reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   reviewAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: '#E2E8F0' },
@@ -827,12 +936,6 @@ const styles = StyleSheet.create({
   tagContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
   tagText: { fontSize: 13, fontWeight: '600' },
-  infoStack: { gap: 12 },
-  infoRow: { flexDirection: 'row', alignItems: 'center' },
-  infoIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  infoLabel: { fontSize: 12, color: '#94A3B8' },
-  infoValue: { fontSize: 15, color: '#0F172A', fontWeight: '500' },
-  inputField: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 10 },
   mapContainer: { height: 160, borderRadius: 16, overflow: 'hidden', marginTop: 10 },
   map: { width: '100%', height: '100%' },
   aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
