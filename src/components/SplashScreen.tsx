@@ -68,7 +68,7 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
       }),
     ]).start();
 
-    // Simulate loading time (you can replace this with actual data loading)
+    // Simulate loading time
     const timer = setTimeout(() => {
       // Fade out animation before finishing
       Animated.parallel([
@@ -108,10 +108,10 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
       ]}
     >
       <View style={styles.logoContainer}>
-        {/* Khidma Logo Image */}
+        {/* ✅ Updated source to .jpeg */}
         <Animated.View style={logoAnimatedStyle}>
           <Image 
-            source={require('../../assets/images/splash-icon.png')} 
+            source={require('../../assets/images/splash-icon.jpeg')} 
             style={styles.logoImage} 
             resizeMode="contain" 
           />
@@ -203,4 +203,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#007AFF',
   },
 });
-

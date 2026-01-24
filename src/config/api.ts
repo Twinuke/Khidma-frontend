@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
-const SERVER_URL = "http://192.168.1.108:5257";
+const SERVER_URL = "http://192.168.1.103:5257";
 export const API_BASE_URL = `${SERVER_URL}/api`;
 export const HUB_URL = `${SERVER_URL}/chatHub`;
 

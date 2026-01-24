@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -13,12 +14,25 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { ChatProvider } from "../src/context/ChatContext";
 import { UserProvider } from "../src/context/UserContext";
 
+// ✅ Import the custom splash screen component
+import SplashScreenComponent from "../src/components/SplashScreen";
+
 export const unstable_settings = {
   anchor: "(tabs)",
 };
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  
+  // ✅ State to track if splash screen animation is finished
+  const [appIsReady, setAppIsReady] = useState(false);
+
+  // ✅ If app is not ready, show the animated splash screen
+  if (!appIsReady) {
+    return (
+      <SplashScreenComponent onFinish={() => setAppIsReady(true)} />
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
