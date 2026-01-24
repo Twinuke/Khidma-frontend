@@ -95,6 +95,7 @@ export default function Profile() {
   const [aiProfile, setAiProfile] = useState<AiProfileData | null>(null);
   const [stats, setStats] = useState<UserProfileStats>({ completedJobs: 0, averageRating: 0, successRate: 0 });
   const [reviews, setReviews] = useState<any[]>([]);
+  const [connectionsCount, setConnectionsCount] = useState<number>(0);
 
   // Rating Modal
   const [rateModalVisible, setRateModalVisible] = useState(false);
@@ -134,6 +135,7 @@ export default function Profile() {
         fetchFullProfile(targetUserId);
         fetchAiProfile(targetUserId);
         fetchReviews(targetUserId);
+        fetchConnectionsCount(targetUserId);
         if (!isOwnProfile) checkConnectionStatus();
       }
     }, [targetUserId])
@@ -174,6 +176,37 @@ export default function Profile() {
           const res = await api.get(`/Reviews/user/${id}`);
           setReviews(res.data);
       } catch (e) { console.log("Fetch reviews error", e); }
+  };
+
+  const fetchConnectionsCount = async (id: number) => {
+      try {
+          const res = await api.get(`/UserConnections/connected/${id}`);
+          setConnectionsCount(res.data?.length || 0);
+      } catch (e) { console.log("Fetch connections count error", e); }
+  };
+
+  const handleDeleteReview = async (reviewId: number) => {
+      if (!isOwnProfile || !targetUserId) return;
+      
+      Alert.alert(
+          "Delete Review",
+          "Are you sure you want to delete this review?",
+          [
+              { text: "Cancel", style: "cancel" },
+              {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: async () => {
+                      try {
+                          await api.delete(`/Reviews/${reviewId}?userId=${targetUserId}`);
+                          fetchReviews(targetUserId);
+                      } catch (e: any) {
+                          Alert.alert("Error", e.response?.data?.message || "Failed to delete review");
+                      }
+                  }
+              }
+          ]
+      );
   };
 
   const fetchAiProfile = async (id: number) => {
@@ -531,12 +564,8 @@ export default function Profile() {
                     </View>
                     <View style={styles.statDividerDark} />
                     <View style={styles.stat}>
-                        <Text style={styles.statNumDark}>
-                             {isClient 
-                                ? (displayUser.createdAt ? new Date(displayUser.createdAt).getFullYear() : new Date().getFullYear()) 
-                                : `$${displayUser.hourlyRate || "0"}`}
-                        </Text>
-                        <Text style={styles.statLabelDark}>{isClient ? "Joined" : "Hourly"}</Text>
+                        <Text style={styles.statNumDark}>{connectionsCount}</Text>
+                        <Text style={styles.statLabelDark}>Connections</Text>
                     </View>
                 </View>
 
@@ -735,7 +764,17 @@ export default function Profile() {
                                     </View>
                                 </TouchableOpacity>
                                 
-                                <View style={{marginLeft: 'auto'}}>{renderStars(rev.rating)}</View>
+                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                                    <View>{renderStars(rev.rating)}</View>
+                                    {isOwnProfile && (
+                                        <TouchableOpacity
+                                            onPress={() => handleDeleteReview(rev.reviewId)}
+                                            style={{padding: 4}}
+                                        >
+                                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             </View>
                             <Text style={styles.reviewComment}>{rev.comment}</Text>
                         </View>

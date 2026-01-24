@@ -85,8 +85,17 @@ export default function ClientJobDetails() {
 
   const fetchConnections = async () => {
     try {
-      const res = await api.get(`/Social/connections/${user?.userId}`);
-      const ids = res.data.map((c: any) => c.friend?.userId);
+      const res = await api.get(`/UserConnections/connected/${user?.userId}`);
+      // Extract user IDs from both Requester and Receiver
+      const ids: number[] = [];
+      res.data.forEach((c: any) => {
+        if (c.requester?.userId && c.requester.userId !== user?.userId) {
+          ids.push(c.requester.userId);
+        }
+        if (c.receiver?.userId && c.receiver.userId !== user?.userId) {
+          ids.push(c.receiver.userId);
+        }
+      });
       setConnectedUserIds(ids);
     } catch (e) {
       console.log("Error fetching connections:", e);

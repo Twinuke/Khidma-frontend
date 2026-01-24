@@ -1,4 +1,4 @@
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,14 +12,15 @@ import {
   View,
 } from "react-native";
 import { ScreenWrapper } from "../components/ScreenWrapper";
-import { useUser } from "../context/UserContext";
+import api from "../config/api";
 
-export default function Login() {
+export default function ChangePassword() {
   const navigation = useNavigation<any>();
-  const { login } = useUser();
+  const route = useRoute<any>();
+  const token: string | undefined = route.params?.token;
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -41,21 +42,37 @@ export default function Login() {
     ]).start();
   }, []);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
+  const handleUpdate = async () => {
+    if (!token) {
+      Alert.alert("Error", "Missing token.");
+      navigation.navigate("Login");
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match.");
       return;
     }
 
     setLoading(true);
     try {
-      await login(email, password);
-      // App.tsx handles navigation on auth state change
+      await api.post("/auth/password-reset/update", {
+        token,
+        newPassword,
+      });
+      Alert.alert("Success", "Your password has been updated.", [
+        { text: "OK", onPress: () => navigation.navigate("Login") },
+      ]);
     } catch (error: any) {
       const msg =
         error.response?.data?.message ||
-        "Login failed. Please check your credentials.";
-      Alert.alert("Login Error", msg);
+        "Failed to update password. Please try again.";
+      Alert.alert("Error", msg);
     } finally {
       setLoading(false);
     }
@@ -70,60 +87,49 @@ export default function Login() {
         ]}
       >
         <View style={styles.headerContainer}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to Khidma</Text>
+          <Text style={styles.title}>Change Password</Text>
+          <Text style={styles.subtitle}>Set a new password for your account</Text>
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>New Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Email"
+            placeholder="Enter new password"
             placeholderTextColor="#999"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
+            value={newPassword}
+            onChangeText={setNewPassword}
+            secureTextEntry
           />
 
-          <Text style={styles.label}>Password</Text>
+          <Text style={styles.label}>Confirm Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your password"
+            placeholder="Confirm new password"
             placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
             secureTextEntry
           />
 
           <TouchableOpacity
-            style={styles.forgotButton}
-            onPress={() => navigation.navigate("ForgotPassword")}
-          >
-            <Text style={styles.forgotText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleUpdate}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Update Password</Text>
             )}
           </TouchableOpacity>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            {/* FIX: Navigate to PhoneNumberEntry to start proper flow */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate("PhoneNumberEntry")}
-            >
-              <Text style={styles.linkText}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.navigate("Login")}
+          >
+            <Text style={styles.backText}>Back to Login</Text>
+          </TouchableOpacity>
         </View>
       </Animated.View>
     </ScreenWrapper>
@@ -139,7 +145,7 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 8,
   },
-  subtitle: { fontSize: 16, color: "#64748B" },
+  subtitle: { fontSize: 16, color: "#64748B", textAlign: "center" },
   form: { width: "100%" },
   label: {
     fontSize: 14,
@@ -158,8 +164,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     color: "#0F172A",
   },
-  forgotButton: { alignSelf: "flex-end", marginBottom: 24 },
-  forgotText: { color: "#2563EB", fontWeight: "600" },
   button: {
     backgroundColor: "#2563EB",
     borderRadius: 12,
@@ -173,7 +177,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7, backgroundColor: "#93C5FD" },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 32 },
-  footerText: { color: "#64748B", fontSize: 15 },
-  linkText: { color: "#2563EB", fontWeight: "bold", fontSize: 15 },
+  backButton: { alignSelf: "center", marginTop: 24 },
+  backText: { color: "#2563EB", fontWeight: "600" },
 });
+
+

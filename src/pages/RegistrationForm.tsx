@@ -119,13 +119,13 @@ export default function RegistrationForm() {
         </View>
 
         <Text style={styles.label}>Full Name *</Text>
-        <TextInput style={styles.input} placeholder="John Doe" value={fullName} onChangeText={setFullName} />
+        <TextInput style={styles.input} placeholder="Name" value={fullName} onChangeText={setFullName} />
 
         <Text style={styles.label}>Phone Number *</Text>
         <TextInput style={styles.input} placeholder="+961..." value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
 
         <Text style={styles.label}>Email *</Text>
-        <TextInput style={styles.input} placeholder="john@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+        <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
 
         <Text style={styles.label}>Password *</Text>
         <TextInput style={styles.input} placeholder="Min 6 characters" value={password} onChangeText={setPassword} secureTextEntry />

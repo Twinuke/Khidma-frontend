@@ -30,25 +30,28 @@ export default function Messages() {
   useFocusEffect(
     useCallback(() => {
       if (user) fetchConversations();
-    }, [user])
+    }, [user?.userId])
   );
 
   useEffect(() => {
     if (!connection) return;
-    const handleMessage = () => fetchConversations();
+    const handleMessage = () => {
+      // Refresh silently to avoid UI refresh indicator
+      fetchConversations(true);
+    };
     connection.on("ReceiveMessage", handleMessage);
     return () => { connection.off("ReceiveMessage", handleMessage); };
   }, [connection]);
 
-  const fetchConversations = async () => {
-    setRefreshing(true);
+  const fetchConversations = async (silent = false) => {
+    if (!silent) setRefreshing(true);
     try {
       const res = await api.get(`/Chat/my/${user?.userId}`);
       setConversations(res.data);
     } catch (e) {
       console.log(e);
     } finally {
-      setRefreshing(false);
+      if (!silent) setRefreshing(false);
     }
   };
 

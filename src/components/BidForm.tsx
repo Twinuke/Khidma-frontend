@@ -73,7 +73,6 @@ export const BidForm: React.FC<BidFormProps> = ({
         proposalText: proposal,
         deliveryTimeDays: parseInt(days),
       });
-      Alert.alert("Success", "Bid placed successfully!");
       onSuccess();
     } catch (error: any) {
       console.log(error);

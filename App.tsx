@@ -16,6 +16,9 @@ import EmailVerification from "./src/pages/EmailVerification";
 import Login from "./src/pages/Login";
 import PhoneNumberEntry from "./src/pages/PhoneNumberEntry";
 import RegistrationForm from "./src/pages/RegistrationForm";
+import ForgotPassword from "./src/pages/ForgotPassword";
+import VerifyResetPassword from "./src/pages/VerifyResetPassword";
+import ChangePassword from "./src/pages/ChangePassword";
 
 // --- App Screens ---
 import Bids from "./src/pages/Bids";
@@ -45,6 +48,9 @@ export type RootStackParamList = {
   EmailVerification: { email: string; purpose?: "register" | "login" };
   RegistrationForm: { phoneNumber: string; email?: string };
   Login: { phoneNumber?: string; email?: string } | undefined;
+  ForgotPassword: undefined;
+  VerifyResetPassword: { token: string };
+  ChangePassword: { token: string };
   MainTabs: undefined; 
   Home: undefined; 
   Profile: undefined;
@@ -85,6 +91,9 @@ const AuthNavigator = () => (
     <AuthStack.Screen name="RegistrationForm" component={RegistrationForm} />
     <AuthStack.Screen name="PhoneNumberEntry" component={PhoneNumberEntry} />
     <AuthStack.Screen name="EmailVerification" component={EmailVerification} />
+    <AuthStack.Screen name="ForgotPassword" component={ForgotPassword} />
+    <AuthStack.Screen name="VerifyResetPassword" component={VerifyResetPassword} />
+    <AuthStack.Screen name="ChangePassword" component={ChangePassword} />
   </AuthStack.Navigator>
 );
 
@@ -141,9 +150,18 @@ const NavigationWrapper = () => {
     return <SplashScreenComponent onFinish={() => {}} />;
   }
 
+  const linking = {
+    prefixes: ["khidma://"],
+    config: {
+      screens: {
+        VerifyResetPassword: "reset-password",
+      },
+    },
+  };
+
   return (
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
-      <NavigationContainer>
+      <NavigationContainer linking={linking}>
         <StatusBar style="auto" />
         {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
       </NavigationContainer>

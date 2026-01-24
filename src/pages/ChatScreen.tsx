@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import api from "../config/api";
 import { useChat } from "../context/ChatContext";
 import { useUser } from "../context/UserContext";
+import { MiniProfileSheet } from "../components/MiniProfileSheet";
 
 export default function ChatScreen() {
   const route = useRoute<any>();
@@ -34,6 +35,7 @@ export default function ChatScreen() {
   const [text, setText] = useState("");
   const flatListRef = useRef<FlatList>(null);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [miniProfileVisible, setMiniProfileVisible] = useState(false);
 
   // ✅ Mark messages as read when entering screen
   useEffect(() => {
@@ -130,10 +132,15 @@ export default function ChatScreen() {
     return (
       <View style={[styles.bubbleWrapper, isMe ? styles.myWrapper : styles.otherWrapper]}>
         {!isMe && (
-           <Image 
-              source={{ uri: otherUser?.profileImageUrl || "https://via.placeholder.com/40" }} 
-              style={styles.messageAvatar} 
-           />
+           <TouchableOpacity 
+              onPress={() => otherUser?.userId && setMiniProfileVisible(true)}
+              activeOpacity={0.7}
+           >
+             <Image 
+                source={{ uri: otherUser?.profileImageUrl || "https://via.placeholder.com/40" }} 
+                style={styles.messageAvatar} 
+             />
+           </TouchableOpacity>
         )}
         <View style={[styles.bubble, isMe ? styles.myBubble : styles.otherBubble]}>
           <Text style={[styles.msgText, isMe ? styles.myText : styles.otherText]}>
@@ -164,7 +171,11 @@ export default function ChatScreen() {
                     <Ionicons name="arrow-back" size={24} color="#FFF" />
                 </TouchableOpacity>
                 
-                <View style={styles.userInfo}>
+                <TouchableOpacity 
+                    style={styles.userInfo}
+                    onPress={() => otherUser?.userId && setMiniProfileVisible(true)}
+                    activeOpacity={0.7}
+                >
                     <Image 
                         source={{ uri: otherUser?.profileImageUrl || "https://via.placeholder.com/100" }} 
                         style={styles.headerAvatar} 
@@ -173,7 +184,7 @@ export default function ChatScreen() {
                         <Text style={styles.headerTitle}>{otherUser?.fullName || "Chat"}</Text>
                         <Text style={styles.headerStatus}>{otherUser?.jobTitle || "Online"}</Text>
                     </View>
-                </View>
+                </TouchableOpacity>
 
                 {/* Optional: Add a call button or menu later */}
                 <View style={{ width: 40 }} /> 
@@ -216,6 +227,13 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Mini Profile Sheet */}
+      <MiniProfileSheet
+        visible={miniProfileVisible}
+        userId={otherUser?.userId || null}
+        onClose={() => setMiniProfileVisible(false)}
+      />
     </View>
   );
 }

@@ -1,4 +1,3 @@
-import { useNavigation } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,15 +11,14 @@ import {
   View,
 } from "react-native";
 import { ScreenWrapper } from "../components/ScreenWrapper";
-import { useUser } from "../context/UserContext";
+import api from "../config/api";
+import { useNavigation } from "@react-navigation/native";
 
-export default function Login() {
+export default function ForgotPassword() {
   const navigation = useNavigation<any>();
-  const { login } = useUser();
-
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -41,21 +39,24 @@ export default function Login() {
     ]).start();
   }, []);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please enter both email and password.");
+  const handleSend = async () => {
+    if (!email) {
+      Alert.alert("Error", "Please enter your email address.");
       return;
     }
 
     setLoading(true);
+    setSuccessMsg(null);
     try {
-      await login(email, password);
-      // App.tsx handles navigation on auth state change
+      await api.post("/auth/password-reset/request", { email });
+      setSuccessMsg(
+        "If an account exists for this email, a verification link has been sent."
+      );
     } catch (error: any) {
       const msg =
         error.response?.data?.message ||
-        "Login failed. Please check your credentials.";
-      Alert.alert("Login Error", msg);
+        "Failed to send reset email. Please try again.";
+      Alert.alert("Error", msg);
     } finally {
       setLoading(false);
     }
@@ -70,8 +71,10 @@ export default function Login() {
         ]}
       >
         <View style={styles.headerContainer}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to Khidma</Text>
+          <Text style={styles.title}>Forgot Password</Text>
+          <Text style={styles.subtitle}>
+            Enter your email to receive a verification link
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -86,44 +89,30 @@ export default function Login() {
             keyboardType="email-address"
           />
 
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <TouchableOpacity
-            style={styles.forgotButton}
-            onPress={() => navigation.navigate("ForgotPassword")}
-          >
-            <Text style={styles.forgotText}>Forgot Password?</Text>
-          </TouchableOpacity>
+          {successMsg ? (
+            <View style={styles.successBox}>
+              <Text style={styles.successText}>{successMsg}</Text>
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleSend}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>Send Verification Link</Text>
             )}
           </TouchableOpacity>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            {/* FIX: Navigate to PhoneNumberEntry to start proper flow */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate("PhoneNumberEntry")}
-            >
-              <Text style={styles.linkText}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.navigate("Login")}
+          >
+            <Text style={styles.backText}>Back to Login</Text>
+          </TouchableOpacity>
         </View>
       </Animated.View>
     </ScreenWrapper>
@@ -139,7 +128,7 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 8,
   },
-  subtitle: { fontSize: 16, color: "#64748B" },
+  subtitle: { fontSize: 16, color: "#64748B", textAlign: "center" },
   form: { width: "100%" },
   label: {
     fontSize: 14,
@@ -158,8 +147,15 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     color: "#0F172A",
   },
-  forgotButton: { alignSelf: "flex-end", marginBottom: 24 },
-  forgotText: { color: "#2563EB", fontWeight: "600" },
+  successBox: {
+    backgroundColor: "#ECFDF5",
+    borderColor: "#10B981",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+  },
+  successText: { color: "#065F46", fontWeight: "600" },
   button: {
     backgroundColor: "#2563EB",
     borderRadius: 12,
@@ -173,7 +169,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7, backgroundColor: "#93C5FD" },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 32 },
-  footerText: { color: "#64748B", fontSize: 15 },
-  linkText: { color: "#2563EB", fontWeight: "bold", fontSize: 15 },
+  backButton: { alignSelf: "center", marginTop: 24 },
+  backText: { color: "#2563EB", fontWeight: "600" },
 });
+
+

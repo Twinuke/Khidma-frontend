@@ -185,7 +185,6 @@ export default function Notifications() {
           {new Date(item.createdAt).toLocaleString()}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#CBD5E1" />
     </TouchableOpacity>
   );
 

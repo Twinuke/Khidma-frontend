@@ -7,10 +7,9 @@ SplashScreen.preventAutoHideAsync();
 
 interface SplashScreenComponentProps {
   onFinish: () => void;
-  logoSource?: any; // Image source - you can pass require('./path/to/logo.png') later
 }
 
-export default function SplashScreenComponent({ onFinish, logoSource }: SplashScreenComponentProps) {
+export default function SplashScreenComponent({ onFinish }: SplashScreenComponentProps) {
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
@@ -109,18 +108,13 @@ export default function SplashScreenComponent({ onFinish, logoSource }: SplashSc
       ]}
     >
       <View style={styles.logoContainer}>
-        {/* Logo - use Image if logoSource is provided, otherwise show placeholder */}
+        {/* Khidma Logo Image */}
         <Animated.View style={logoAnimatedStyle}>
-          {logoSource ? (
-            <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
-          ) : (
-            <View style={styles.logoPlaceholder}>
-              <Text style={styles.logoText}>K</Text>
-            </View>
-          )}
-        </Animated.View>
-        <Animated.View style={{ opacity: textFadeAnim }}>
-          <Text style={styles.appName}>Khidma</Text>
+          <Image 
+            source={require('../../assets/images/splash-icon.png')} 
+            style={styles.logoImage} 
+            resizeMode="contain" 
+          />
         </Animated.View>
       </View>
       <Animated.View style={[styles.loaderContainer, { opacity: textFadeAnim }]}>
@@ -187,38 +181,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  logoPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#007AFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
-    elevation: 8,
-  },
   logoImage: {
-    width: 120,
-    height: 120,
+    width: 250,
+    height: 100,
     marginBottom: 20,
-  },
-  logoText: {
-    fontSize: 64,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#333',
-    letterSpacing: 2,
   },
   loaderContainer: {
     marginTop: 40,

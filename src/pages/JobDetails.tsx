@@ -368,7 +368,7 @@ export default function JobDetails() {
               onSuccess={() => {
                 setModalVisible(false);
                 setHasPlacedBid(true);
-                Alert.alert("Success", "Bid placed!");
+                fetchJobDetails();
               }}
             />
           ) : (

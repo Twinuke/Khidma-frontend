@@ -50,6 +50,13 @@ export default function Home() {
   const { user, logout, refreshUser } = useUser();
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [stats, setStats] = useState({
+    activeJobs: 0,
+    completedProjects: 0,
+    totalEarnings: 0,
+    activeBids: 0,
+    connections: 0,
+  });
 
   // --- SHEET & KEYBOARD ---
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,6 +85,7 @@ export default function Home() {
     React.useCallback(() => {
       refreshUser();
       fetchActivity();
+      fetchStats();
     }, [user?.userId])
   );
 
@@ -90,6 +98,118 @@ export default function Home() {
       setRecentActivity(response.data.slice(0, 3));
     } catch (e) {
       console.log(e);
+    }
+  };
+
+  const fetchStats = async () => {
+    if (!user?.userId) return;
+    try {
+      if (user.userType === 1) {
+        // Client stats
+        const [jobsRes, contractsRes, connectionsRes] = await Promise.all([
+          api.get(`/Jobs/client/${user.userId}`).catch((e) => {
+            console.log("Error fetching jobs:", e);
+            return { data: [] };
+          }),
+          api.get(`/Contracts/client/${user.userId}`).catch((e) => {
+            console.log("Error fetching contracts:", e);
+            return { data: [] };
+          }),
+          api.get(`/UserConnections/connected/${user.userId}`).catch((e) => {
+            console.log("Error fetching connections:", e);
+            return { data: [] };
+          }),
+        ]);
+
+        const jobs = Array.isArray(jobsRes.data) ? jobsRes.data : [];
+        const contracts = Array.isArray(contractsRes.data) ? contractsRes.data : [];
+        const connections = Array.isArray(connectionsRes.data) ? connectionsRes.data : [];
+
+        const activeJobs = jobs.filter((j: any) => {
+          const status = j.status ?? j.Status ?? -1;
+          return status === 0 || status === 1 || status === 2; // Open, Assigned, InProgress
+        }).length;
+
+        const completedProjects = contracts.filter((c: any) => {
+          const status = c.status ?? c.Status ?? -1;
+          return status === 1; // Completed
+        }).length;
+
+        const totalSpent = contracts
+          .filter((c: any) => {
+            const status = c.status ?? c.Status ?? -1;
+            return status === 1; // Completed
+          })
+          .reduce((sum: number, c: any) => {
+            const amount = c.escrowAmount ?? c.EscrowAmount ?? 0;
+            return sum + (parseFloat(amount.toString()) || 0);
+          }, 0);
+
+        // The endpoint already returns only accepted connections, so just count them
+        const acceptedConnections = connections.length;
+
+        setStats({
+          activeJobs,
+          completedProjects,
+          totalEarnings: totalSpent,
+          activeBids: 0,
+          connections: acceptedConnections,
+        });
+      } else {
+        // Freelancer stats
+        const [bidsRes, contractsRes, connectionsRes] = await Promise.all([
+          api.get(`/Bids/freelancer/${user.userId}`).catch((e) => {
+            console.log("Error fetching bids:", e);
+            return { data: [] };
+          }),
+          api.get(`/Contracts/freelancer/${user.userId}`).catch((e) => {
+            console.log("Error fetching contracts:", e);
+            return { data: [] };
+          }),
+          api.get(`/UserConnections/connected/${user.userId}`).catch((e) => {
+            console.log("Error fetching connections:", e);
+            return { data: [] };
+          }),
+        ]);
+
+        const bids = Array.isArray(bidsRes.data) ? bidsRes.data : [];
+        const contracts = Array.isArray(contractsRes.data) ? contractsRes.data : [];
+        const connections = Array.isArray(connectionsRes.data) ? connectionsRes.data : [];
+
+        // Active bids = Pending (0) or Accepted (1) - not Rejected (2)
+        const activeBids = bids.filter((b: any) => {
+          const status = b.status ?? b.Status ?? -1;
+          return status === 0 || status === 1; // Pending or Accepted
+        }).length;
+
+        const completedProjects = contracts.filter((c: any) => {
+          const status = c.status ?? c.Status ?? -1;
+          return status === 1; // Completed
+        }).length;
+
+        const totalEarned = contracts
+          .filter((c: any) => {
+            const status = c.status ?? c.Status ?? -1;
+            return status === 1; // Completed
+          })
+          .reduce((sum: number, c: any) => {
+            const amount = c.escrowAmount ?? c.EscrowAmount ?? 0;
+            return sum + (parseFloat(amount.toString()) || 0);
+          }, 0);
+
+        // The endpoint already returns only accepted connections, so just count them
+        const acceptedConnections = connections.length;
+
+        setStats({
+          activeJobs: 0,
+          completedProjects,
+          totalEarnings: totalEarned,
+          activeBids,
+          connections: acceptedConnections,
+        });
+      }
+    } catch (e) {
+      console.log("Error fetching stats:", e);
     }
   };
 
@@ -324,11 +444,47 @@ export default function Home() {
           <Animated.View style={[styles.expandedContent, { opacity: detailsOpacity }]} pointerEvents={isExpanded ? "auto" : "none"}>
             <View style={styles.divider} />
             <View style={styles.statsRow}>
-              <View style={styles.statItem}><Text style={styles.statLabel}>Success</Text><Text style={styles.statValue}>98%</Text></View>
-              <View style={styles.verticalLine} />
-              <View style={styles.statItem}><Text style={styles.statLabel}>Balance</Text><Text style={styles.statValue}>${user?.balance?.toFixed(2)}</Text></View>
-              <View style={styles.verticalLine} />
-              <View style={styles.statItem}><Text style={styles.statLabel}>Rating</Text><Text style={styles.statValue}>4.9 ★</Text></View>
+              {user?.userType === 1 ? (
+                <>
+                  <View style={styles.statItem}>
+                    <Ionicons name="briefcase-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.statLabel}>Active Jobs</Text>
+                    <Text style={styles.statValue}>{stats.activeJobs}</Text>
+                  </View>
+                  <View style={styles.verticalLine} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.success} />
+                    <Text style={styles.statLabel}>Completed</Text>
+                    <Text style={styles.statValue}>{stats.completedProjects}</Text>
+                  </View>
+                  <View style={styles.verticalLine} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="people-outline" size={16} color="#8B5CF6" />
+                    <Text style={styles.statLabel}>Connections</Text>
+                    <Text style={styles.statValue}>{stats.connections}</Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.statItem}>
+                    <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.statLabel}>Active Bids</Text>
+                    <Text style={styles.statValue}>{stats.activeBids}</Text>
+                  </View>
+                  <View style={styles.verticalLine} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.success} />
+                    <Text style={styles.statLabel}>Completed</Text>
+                    <Text style={styles.statValue}>{stats.completedProjects}</Text>
+                  </View>
+                  <View style={styles.verticalLine} />
+                  <View style={styles.statItem}>
+                    <Ionicons name="people-outline" size={16} color="#8B5CF6" />
+                    <Text style={styles.statLabel}>Connections</Text>
+                    <Text style={styles.statValue}>{stats.connections}</Text>
+                  </View>
+                </>
+              )}
             </View>
             <TouchableOpacity style={styles.expButton} onPress={() => navigation.navigate("Profile")}>
               <Ionicons name="person-circle-outline" size={20} color="#FFF" />
@@ -406,15 +562,24 @@ export default function Home() {
           <Text style={styles.sectionTitle}>Recent Activity</Text>
           <TouchableOpacity onPress={() => navigation.navigate("Notifications")}><Text style={styles.seeAll}>See All</Text></TouchableOpacity>
         </View>
-        {recentActivity.map((item) => (
-          <View key={item.notificationId} style={styles.activityItem}>
-            <Ionicons name="notifications" size={18} color={COLORS.primary} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.actTitle}>{item.title}</Text>
-              <Text style={styles.actDate}>{item.message}</Text>
+        {recentActivity.length > 0 ? (
+          recentActivity.map((item) => (
+            <View key={item.notificationId} style={styles.activityItem}>
+              <Ionicons name="notifications" size={18} color={COLORS.primary} />
+              <View style={{ flex: 1, marginLeft: 10 }}>
+                <Text style={styles.actTitle}>{item.title}</Text>
+                <Text style={styles.actDate}>{item.message}</Text>
+              </View>
             </View>
-          </View>
-        ))}
+          ))
+        ) : (
+          user?.userType === 0 && (
+            <View style={styles.emptyActivityContainer}>
+              <Ionicons name="person-outline" size={32} color="#CBD5E1" />
+              <Text style={styles.emptyActivityText}>Go to profile to start editing your account</Text>
+            </View>
+          )
+        )}
         <View style={{ height: 80 }} />
       </ScrollView>
 
@@ -487,10 +652,10 @@ const styles = StyleSheet.create({
   notifText: { color: "#FFF", fontSize: 9, fontWeight: "bold" },
   expandedContent: { marginTop: 10 },
   divider: { height: 1, backgroundColor: "rgba(255,255,255,0.1)", marginVertical: 10 },
-  statsRow: { flexDirection: "row", justifyContent: "space-around", marginBottom: 15 },
-  statItem: { alignItems: "center" },
-  statLabel: { color: "#94A3B8", fontSize: 10 },
-  statValue: { color: "#FFF", fontWeight: "bold" },
+  statsRow: { flexDirection: "row", justifyContent: "space-around", marginBottom: 15, paddingHorizontal: 8 },
+  statItem: { alignItems: "center", flex: 1 },
+  statLabel: { color: "#94A3B8", fontSize: 10, marginTop: 4, textAlign: "center" },
+  statValue: { color: "#FFF", fontWeight: "bold", fontSize: 16, marginTop: 2 },
   verticalLine: { width: 1, backgroundColor: "rgba(255,255,255,0.1)" },
   expButton: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.1)", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, marginBottom: 5 },
   logoutBtn: { backgroundColor: "rgba(239, 68, 68, 0.2)" },
@@ -515,6 +680,25 @@ const styles = StyleSheet.create({
   activityItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 15, borderRadius: 12, marginBottom: 10 },
   actTitle: { fontWeight: "bold", color: COLORS.dark },
   actDate: { color: "#94A3B8", fontSize: 12 },
+  emptyActivityContainer: { 
+    backgroundColor: "#FFF", 
+    padding: 32, 
+    borderRadius: 16, 
+    alignItems: "center", 
+    justifyContent: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    borderStyle: "dashed"
+  },
+  emptyActivityText: { 
+    color: "#94A3B8", 
+    fontSize: 14, 
+    marginTop: 12, 
+    textAlign: "center",
+    fontStyle: "italic",
+    fontWeight: "500"
+  },
   floatingFab: { position: "absolute", bottom: 30, right: 20 },
   fabGradient: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#FFF" },
 });
