@@ -38,7 +38,7 @@ const COLORS = {
   backdrop: "rgba(15, 23, 42, 0.6)",
 };
 
-const TABS = ["Requests", "Connections"];
+const TABS = ["Requests", "Connections", "Suggestions"];
 
 export default function Network() {
   const navigation = useNavigation<any>();
@@ -47,8 +47,10 @@ export default function Network() {
 
   const [activeTab, setActiveTab] = useState("Requests");
   const [data, setData] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<{ user: any; matchScore: number; matchReasons: string[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sendingRequestFor, setSendingRequestFor] = useState<number | null>(null);
 
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -58,7 +60,11 @@ export default function Network() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchNetworkData();
+      if (activeTab === "Suggestions") {
+        fetchSuggestions();
+      } else {
+        fetchNetworkData();
+      }
     }, [activeTab])
   );
 
@@ -66,10 +72,10 @@ export default function Network() {
     if (!user) return;
     setLoading(true);
     try {
-      const endpoint = activeTab === "Requests" 
-        ? `/UserConnections/pending/${user.userId}` 
+      const endpoint = activeTab === "Requests"
+        ? `/UserConnections/pending/${user.userId}`
         : `/UserConnections/connected/${user.userId}`;
-      
+
       const res = await api.get(endpoint);
       setData(res.data);
     } catch (error) {
@@ -81,15 +87,47 @@ export default function Network() {
     }
   };
 
+  const fetchSuggestions = async () => {
+    if (!user?.userId) return;
+    setLoading(true);
+    try {
+      const res = await api.get(`/UserConnections/people-you-may-know/${user.userId}`);
+      setSuggestions(Array.isArray(res.data) ? res.data : []);
+    } catch (error) {
+      console.log("Suggestions Error:", error);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   const handleAction = async (connectionId: number, action: "accept" | "reject") => {
     try {
       setData((prev) => prev.filter((item) => item.connectionId !== connectionId));
-      const endpoint = action === "accept" 
+      const endpoint = action === "accept"
         ? `/UserConnections/accept/${connectionId}`
         : `/UserConnections/reject/${connectionId}`;
       await api.post(endpoint);
     } catch (error) {
       fetchNetworkData();
+    }
+  };
+
+  const handleConnect = async (targetUser: any) => {
+    if (!user?.userId || targetUser.userId === user.userId) return;
+    setSendingRequestFor(targetUser.userId);
+    try {
+      await api.post("/UserConnections/send", {
+        requesterId: user.userId,
+        receiverId: targetUser.userId,
+      });
+      setSuggestions((prev) => prev.filter((s) => s.user.userId !== targetUser.userId));
+      Alert.alert("Sent", "Connection request sent!");
+    } catch (e: any) {
+      Alert.alert("Error", e.response?.data?.error || "Could not send request.");
+    } finally {
+      setSendingRequestFor(null);
     }
   };
 
@@ -142,13 +180,13 @@ export default function Network() {
 
   const renderItem = ({ item }: { item: any }) => {
     const displayUser = activeTab === "Requests" ? item.requester : (item.requesterId === user?.userId ? item.receiver : item.requester);
-    
+
     if (!displayUser) return null;
 
     return (
-      <TouchableOpacity 
-        style={styles.card} 
-        activeOpacity={0.9} 
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.9}
         onPress={() => openProfilePreview(displayUser)}
       >
         <View style={styles.cardRow}>
@@ -162,7 +200,6 @@ export default function Network() {
 
             <View style={styles.infoCol}>
                 <Text style={styles.name}>{displayUser.fullName}</Text>
-                {/* ✅ FIXED: Use descriptive text instead of raw userType number */}
                 <Text style={styles.role}>
                     {displayUser.jobTitle || (displayUser.userType === 1 ? "Client" : "Freelancer")}
                 </Text>
@@ -196,6 +233,76 @@ export default function Network() {
     );
   };
 
+  const renderSuggestionItem = ({ item }: { item: { user: any; matchScore: number; matchReasons: string[] } }) => {
+    const u = item.user;
+    if (!u) return null;
+    const isSending = sendingRequestFor === u.userId;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.9}
+        onPress={() => openProfilePreview(u)}
+      >
+        <View style={styles.cardRow}>
+            {u.profileImageUrl ? (
+                <Image source={{ uri: u.profileImageUrl }} style={styles.avatar} />
+            ) : (
+                <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>{u.fullName?.[0] || "?"}</Text>
+                </View>
+            )}
+
+            <View style={styles.infoCol}>
+                <View style={styles.nameRow}>
+                    <Text style={styles.name}>{u.fullName}</Text>
+                    {item.matchScore > 0 && (
+                        <View style={styles.matchBadge}>
+                            <Text style={styles.matchBadgeText}>{item.matchScore}% match</Text>
+                        </View>
+                    )}
+                </View>
+                <Text style={styles.role}>
+                    {u.jobTitle || (u.userType === 1 ? "Client" : "Freelancer")}
+                </Text>
+                {u.city && (
+                    <View style={styles.locRow}>
+                        <Ionicons name="location-outline" size={12} color={COLORS.subtext} />
+                        <Text style={styles.locText}>{u.city}</Text>
+                    </View>
+                )}
+                {item.matchReasons && item.matchReasons.length > 0 && (
+                    <View style={styles.reasonsRow}>
+                        {item.matchReasons.slice(0, 2).map((r, i) => (
+                            <View key={i} style={styles.reasonChip}>
+                                <Text style={styles.reasonChipText} numberOfLines={1}>{r}</Text>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+        </View>
+
+        <View style={styles.actionRow}>
+            <TouchableOpacity
+                style={[styles.btn, styles.btnConnect]}
+                onPress={() => handleConnect(u)}
+                disabled={isSending}
+            >
+                {isSending ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                    <>
+                        <Ionicons name="person-add-outline" size={18} color="#FFF" style={{ marginRight: 6 }} />
+                        <Text style={[styles.btnText, { color: "#FFF" }]}>Connect</Text>
+                    </>
+                )}
+            </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -209,7 +316,9 @@ export default function Network() {
             <View style={styles.headerTop}>
                 <View>
                     <Text style={styles.headerTitle}>Network</Text>
-                    <Text style={styles.headerSub}>Grow your professional circle.</Text>
+                    <Text style={styles.headerSub}>
+                        {activeTab === "Suggestions" ? "People you may know — freelancers & users." : "Grow your professional circle."}
+                    </Text>
                 </View>
             </View>
             <View style={styles.tabContainer}>
@@ -228,13 +337,40 @@ export default function Network() {
 
       {loading ? (
           <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+      ) : activeTab === "Suggestions" ? (
+          <FlatList
+            data={suggestions}
+            renderItem={renderSuggestionItem}
+            keyExtractor={(item) => item.user.userId.toString()}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => { setRefreshing(true); fetchSuggestions(); }}
+                    tintColor={COLORS.primary}
+                />
+            }
+            ListEmptyComponent={
+                <View style={styles.emptyState}>
+                    <Ionicons name="people-outline" size={64} color={COLORS.muted} />
+                    <Text style={styles.emptyTitle}>No suggestions right now</Text>
+                    <Text style={styles.emptySub}>Add skills & connections to get better matches.</Text>
+                </View>
+            }
+          />
       ) : (
           <FlatList
             data={data}
             renderItem={renderItem}
             keyExtractor={(item) => item.connectionId.toString()}
             contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNetworkData(); }} tintColor={COLORS.primary} />}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={() => { setRefreshing(true); fetchNetworkData(); }}
+                    tintColor={COLORS.primary}
+                />
+            }
             ListEmptyComponent={
                 <View style={styles.emptyState}>
                     <Ionicons name={activeTab === "Requests" ? "mail-unread-outline" : "people-outline"} size={64} color={COLORS.muted} />
@@ -316,6 +452,14 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 13, fontWeight: '700' },
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginTop: 16 },
+  emptySub: { fontSize: 14, color: COLORS.subtext, marginTop: 8 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  matchBadge: { backgroundColor: COLORS.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  matchBadgeText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
+  reasonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  reasonChip: { backgroundColor: COLORS.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, maxWidth: '100%' },
+  reasonChipText: { fontSize: 11, color: COLORS.subtext },
+  btnConnect: { flexDirection: 'row', backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: COLORS.backdrop },
   sheet: { backgroundColor: "#FFF", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, paddingHorizontal: 24, maxHeight: '80%' },

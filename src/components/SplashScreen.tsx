@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Image, Animated, Easing } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 
-// Keep the splash screen visible while we fetch resources
+// Keep the native splash screen visible while we prepare the animated one
 SplashScreen.preventAutoHideAsync();
 
 interface SplashScreenComponentProps {
@@ -10,17 +10,14 @@ interface SplashScreenComponentProps {
 }
 
 export default function SplashScreenComponent({ onFinish }: SplashScreenComponentProps) {
-  // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
   const logoScaleAnim = useRef(new Animated.Value(0)).current;
-  const textFadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // Start animations
+    // Start entry animations
     Animated.parallel([
-      // Logo fade in and scale
       Animated.sequence([
         Animated.timing(logoScaleAnim, {
           toValue: 1,
@@ -28,7 +25,6 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
           easing: Easing.out(Easing.back(1.5)),
           useNativeDriver: true,
         }),
-        // Pulse animation
         Animated.loop(
           Animated.sequence([
             Animated.timing(pulseAnim, {
@@ -46,31 +42,21 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
           ])
         ),
       ]),
-      // Container fade in
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 400,
         useNativeDriver: true,
       }),
-      // Scale animation
       Animated.timing(scaleAnim, {
         toValue: 1,
         duration: 500,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-      // Text fade in
-      Animated.timing(textFadeAnim, {
-        toValue: 1,
-        duration: 600,
-        delay: 300,
-        useNativeDriver: true,
-      }),
     ]).start();
 
-    // Simulate loading time
+    // Show the custom splash for 2.5 seconds, then fade out and finish
     const timer = setTimeout(() => {
-      // Fade out animation before finishing
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 0,
@@ -83,13 +69,13 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
           useNativeDriver: true,
         }),
       ]).start(() => {
-        SplashScreen.hideAsync();
-        onFinish();
+        SplashScreen.hideAsync(); // Hide the native screen
+        onFinish(); // Transition to the main app
       });
-    }, 2500); // Show splash for 2.5 seconds
+    }, 2500);
 
     return () => clearTimeout(timer);
-  }, [onFinish, fadeAnim, scaleAnim, logoScaleAnim, textFadeAnim, pulseAnim]);
+  }, [onFinish, fadeAnim, scaleAnim, logoScaleAnim, pulseAnim]);
 
   const logoAnimatedStyle = {
     transform: [
@@ -98,74 +84,16 @@ export default function SplashScreenComponent({ onFinish }: SplashScreenComponen
   };
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }],
-        },
-      ]}
-    >
+    <Animated.View style={[styles.container, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.logoContainer}>
-        {/* ✅ Updated source to .jpeg */}
         <Animated.View style={logoAnimatedStyle}>
           <Image 
-            source={require('../../assets/images/splash-icon.jpeg')} 
+            source={require('../../assets/images/splash-icon.png')} 
             style={styles.logoImage} 
             resizeMode="contain" 
           />
         </Animated.View>
       </View>
-      <Animated.View style={[styles.loaderContainer, { opacity: textFadeAnim }]}>
-        <View style={styles.loaderDots}>
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                transform: [
-                  {
-                    translateY: pulseAnim.interpolate({
-                      inputRange: [1, 1.1],
-                      outputRange: [0, -8],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                transform: [
-                  {
-                    translateY: pulseAnim.interpolate({
-                      inputRange: [1, 1.1],
-                      outputRange: [0, -8],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.dot,
-              {
-                transform: [
-                  {
-                    translateY: pulseAnim.interpolate({
-                      inputRange: [1, 1.1],
-                      outputRange: [0, -8],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-        </View>
-      </Animated.View>
     </Animated.View>
   );
 }
@@ -179,27 +107,9 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 40,
   },
   logoImage: {
     width: 250,
     height: 100,
-    marginBottom: 20,
-  },
-  loaderContainer: {
-    marginTop: 40,
-    alignItems: 'center',
-  },
-  loaderDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#007AFF',
   },
 });

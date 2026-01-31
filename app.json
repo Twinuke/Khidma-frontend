@@ -8,7 +8,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/splash-icon.jpeg", 
+      "image": "./assets/images/splash-icon.png",
       "backgroundColor": "#ffffff",
       "resizeMode": "contain"
     },
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/splash-icon.png", 
         "backgroundColor": "#ffffff"
       },
       "package": "com.khidma.app",
