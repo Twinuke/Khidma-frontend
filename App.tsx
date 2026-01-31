@@ -50,7 +50,7 @@ export type RootStackParamList = {
   Login: { phoneNumber?: string; email?: string } | undefined;
   ForgotPassword: undefined;
   VerifyResetPassword: { token: string };
-  ChangePassword: { token: string };
+  ChangePassword: { token?: string; email?: string };
   MainTabs: undefined; 
   Home: undefined; 
   Profile: undefined;

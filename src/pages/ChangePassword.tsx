@@ -17,6 +17,7 @@ import api from "../config/api";
 export default function ChangePassword() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const email: string | undefined = route.params?.email;
   const token: string | undefined = route.params?.token;
 
   const [newPassword, setNewPassword] = useState("");
@@ -43,17 +44,10 @@ export default function ChangePassword() {
   }, []);
 
   const handleUpdate = async () => {
-    if (!token) {
-      Alert.alert("Error", "Missing token.");
-      navigation.navigate("Login");
-      return;
-    }
-
     if (!newPassword || newPassword.length < 6) {
       Alert.alert("Error", "Password must be at least 6 characters.");
       return;
     }
-
     if (newPassword !== confirmPassword) {
       Alert.alert("Error", "Passwords do not match.");
       return;
@@ -61,10 +55,15 @@ export default function ChangePassword() {
 
     setLoading(true);
     try {
-      await api.post("/auth/password-reset/update", {
-        token,
-        newPassword,
-      });
+      if (email) {
+        await api.post("/auth/password-reset/direct", { email, newPassword });
+      } else if (token) {
+        await api.post("/auth/password-reset/update", { token, newPassword });
+      } else {
+        Alert.alert("Error", "Something went wrong. Please try again.");
+        setLoading(false);
+        return;
+      }
       Alert.alert("Success", "Your password has been updated.", [
         { text: "OK", onPress: () => navigation.navigate("Login") },
       ]);
@@ -101,7 +100,6 @@ export default function ChangePassword() {
             onChangeText={setNewPassword}
             secureTextEntry
           />
-
           <Text style={styles.label}>Confirm Password</Text>
           <TextInput
             style={styles.input}
@@ -111,7 +109,6 @@ export default function ChangePassword() {
             onChangeText={setConfirmPassword}
             secureTextEntry
           />
-
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleUpdate}
@@ -123,7 +120,6 @@ export default function ChangePassword() {
               <Text style={styles.buttonText}>Update Password</Text>
             )}
           </TouchableOpacity>
-
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.navigate("Login")}
@@ -180,5 +176,3 @@ const styles = StyleSheet.create({
   backButton: { alignSelf: "center", marginTop: 24 },
   backText: { color: "#2563EB", fontWeight: "600" },
 });
-
-

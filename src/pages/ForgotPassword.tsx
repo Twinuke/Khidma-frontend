@@ -49,14 +49,9 @@ export default function ForgotPassword() {
     setSuccessMsg(null);
     try {
       await api.post("/auth/password-reset/request", { email });
-      setSuccessMsg(
-        "If an account exists for this email, a verification link has been sent."
-      );
+      setSuccessMsg("You've received an email.");
     } catch (error: any) {
-      const msg =
-        error.response?.data?.message ||
-        "Failed to send reset email. Please try again.";
-      Alert.alert("Error", msg);
+      setSuccessMsg("You've received an email.");
     } finally {
       setLoading(false);
     }
@@ -95,17 +90,28 @@ export default function ForgotPassword() {
             </View>
           ) : null}
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleSend}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Send Verification Link</Text>
-            )}
-          </TouchableOpacity>
+          {successMsg ? (
+            <>
+              <TouchableOpacity
+                style={styles.button}
+                onPress={() => navigation.navigate("ChangePassword", { email })}
+              >
+                <Text style={styles.buttonText}>Continue</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleSend}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Send Verification Link</Text>
+              )}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.backButton}
